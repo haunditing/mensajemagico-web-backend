@@ -10,7 +10,7 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 // 1. Crear sesión de Checkout
 router.post("/create-checkout-session", async (req, res) => {
   const { userId, interval } = req.body; // interval: 'monthly' o 'yearly'
-  const clientUrl = process.env.CLIENT_URL || req.headers.origin || "http://localhost:5173";
+  const clientUrl = process.env.CLIENT_URL || req.headers.origin || "http://www.mensajemagico.com";
 
   try {
     const user = await User.findById(userId);
