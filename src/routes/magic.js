@@ -32,7 +32,7 @@ const getUser = async (req, res, next) => {
 };
 
 router.post("/generate", getUser, async (req, res) => {
-  const { occasion, tone, contextWords, relationship, receivedText } = req.body;
+  const { occasion, tone, contextWords, relationship, receivedText, formatInstruction } = req.body;
   const user = req.user;
 
   try {
@@ -49,7 +49,8 @@ router.post("/generate", getUser, async (req, res) => {
       tone, 
       contextWords,
       relationship,
-      receivedText
+      receivedText,
+      formatInstruction
     });
 
     // 4. Incrementar uso
