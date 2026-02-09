@@ -35,6 +35,8 @@ router.post("/generate", getUser, async (req, res) => {
   const { occasion, tone, contextWords, relationship, receivedText, formatInstruction } = req.body;
   const user = req.user;
 
+  logger.info("Solicitud de generación recibida", { body: req.body, userPlan: user.planLevel });
+
   try {
     // 1. Validar acceso (Centralizado en el servicio)
     // Lanza error con upsell si falla alguna validación
