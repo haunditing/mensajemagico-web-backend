@@ -39,6 +39,7 @@ router.post("/generate", getUser, async (req, res) => {
     relationship,
     receivedText,
     formatInstruction,
+    userLocation, // Recibimos la ubicación (puede venir del frontend o un middleware de IP)
   } = req.body;
   const user = req.user;
 
@@ -58,6 +59,8 @@ router.post("/generate", getUser, async (req, res) => {
       relationship,
       receivedText,
       formatInstruction,
+      userLocation,
+      planLevel: user.planLevel, // Pasamos el nivel de plan para la lógica condicional
     });
 
     // 4. Incrementar uso

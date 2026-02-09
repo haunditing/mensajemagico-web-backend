@@ -1,6 +1,7 @@
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 const crypto = require("crypto"); // 👈 Error 1: Faltaba esta importación
 const logger = require("../utils/logger");
+const RegionalContextService = require("./RegionalContextService");
 
 const genAI = new GoogleGenerativeAI(process.env.AI_API_KEY);
 
@@ -15,6 +16,8 @@ const generate = async (aiConfig, data) => {
     relationship,
     receivedText,
     formatInstruction,
+    userLocation,
+    planLevel,
   } = data;
 
   // 👈 Error 1 (cont.): Usar 'data' en lugar de 'params' y generar hash
@@ -29,12 +32,16 @@ const generate = async (aiConfig, data) => {
     responseCache.delete(cacheKey);
   }
 
+  // Lógica de Tono Regional Premium (Delegada al servicio escalable)
+  const regionalBoost = RegionalContextService.getRegionalBoost(userLocation, planLevel);
+
   const promptText = `
     Escribe un mensaje para la ocasión: ${occasion}.
     ${relationship ? `Relación: ${relationship}.` : ""}
     Tono: ${tone}.
     ${receivedText ? `En respuesta a: "${receivedText}".` : ""}
     ${contextWords ? `Contexto/Palabras clave: ${contextWords}` : ""}
+    ${regionalBoost}
     ${formatInstruction || ""}
   `.trim();
 
@@ -48,6 +55,7 @@ const generate = async (aiConfig, data) => {
       - Plan GUEST: Breve, sin emojis, respuesta directa.
       - Plan FREEMIUM: Empático, 1 emoji, tono conversacional.
       - Plan PREMIUM: Análisis psicológico, estructura elegante, copywriting de alta conversión.
+      - Variable Regional (Premium Only): Si el contexto menciona una ciudad específica (ej. Cartagena, Medellín, Bogotá), el sistema debe adoptar sutilmente el 'Modo Regional'. Esto implica: usar el ritmo local, mencionar referencias icónicas si encajan y aplicar un lenguaje que genere cercanía inmediata según la cultura de la ciudad, pero manteniendo la sofisticación del Plan Premium.
     `.trim();
 
     const model = genAI.getGenerativeModel({
