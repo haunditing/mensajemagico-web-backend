@@ -9,6 +9,8 @@ const authRoutes = require("./src/routes/auth");
 const configRoutes = require("./src/routes/config");
 const favoritesRoutes = require("./src/routes/favorites");
 const wompiRoutes = require("./src/routes/wompi");
+const mercadopagoRoutes = require("./src/routes/mercadopago");
+
 const logger = require("./src/utils/logger");
 
 const app = express();
@@ -25,7 +27,7 @@ app.use(cors());
 // IMPORTANTE: El webhook de Stripe necesita el body raw, el resto JSON.
 // Usamos esta lógica para asegurar que express.json no toque la ruta del webhook.
 app.use((req, res, next) => {
-  if (req.originalUrl === '/api/payments/webhook') {
+  if (req.originalUrl === "/api/payments/webhook") {
     next();
   } else {
     express.json()(req, res, next);
@@ -46,6 +48,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/config", configRoutes);
 app.use("/api/favorites", favoritesRoutes);
 app.use("/api", wompiRoutes); // Montamos en /api para que quede /api/webhooks/wompi
+app.use("/api/mercadopago", mercadopagoRoutes);
 
 // Manejo de errores global
 app.use((err, req, res, next) => {

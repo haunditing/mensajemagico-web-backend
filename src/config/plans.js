@@ -93,6 +93,8 @@ const PLAN_CONFIG = {
         stripe_price_id_yearly: "price_1Syig1D9BNQ52nHRtvvanYpY", // ID real de Stripe
         wompi_price_in_cents_monthly: 2000000, // $20.000 COP
         wompi_price_in_cents_yearly: 19000000, // $190.000 COP
+        mercadopago_price_monthly: 20000, // $20.000 (Moneda local o base)
+        mercadopago_price_yearly: 190000, // $190.000
       },
     },
   },

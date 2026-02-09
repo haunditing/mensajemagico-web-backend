@@ -32,10 +32,15 @@ const getUser = async (req, res, next) => {
 };
 
 router.post("/generate", getUser, async (req, res) => {
-  const { occasion, tone, contextWords, relationship, receivedText, formatInstruction } = req.body;
+  const {
+    occasion,
+    tone,
+    contextWords,
+    relationship,
+    receivedText,
+    formatInstruction,
+  } = req.body;
   const user = req.user;
-
-  logger.info("Solicitud de generación recibida", { body: req.body, userPlan: user.planLevel });
 
   try {
     // 1. Validar acceso (Centralizado en el servicio)
@@ -46,13 +51,13 @@ router.post("/generate", getUser, async (req, res) => {
     const aiConfig = PlanService.getAIConfig(user.planLevel);
 
     // 3. Llamada al servicio de IA
-    const generatedText = await AIService.generate(aiConfig, { 
-      occasion, 
-      tone, 
+    const generatedText = await AIService.generate(aiConfig, {
+      occasion,
+      tone,
       contextWords,
       relationship,
       receivedText,
-      formatInstruction
+      formatInstruction,
     });
 
     // 4. Incrementar uso
@@ -63,7 +68,8 @@ router.post("/generate", getUser, async (req, res) => {
     res.json({
       result: generatedText,
       monetization: planMetadata.monetization,
-      remaining_credits: planMetadata.access.daily_limit - user.usage.generationsCount,
+      remaining_credits:
+        planMetadata.access.daily_limit - user.usage.generationsCount,
     });
   } catch (err) {
     if (err.statusCode) {

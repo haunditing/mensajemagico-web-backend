@@ -30,7 +30,7 @@ const authenticate = (req, res, next) => {
 const authLimiter = rateLimiter({
   windowMs: 15 * 60 * 1000,
   max: 10,
-  message: "Demasiados intentos. Por favor, inténtalo de nuevo en 15 minutos."
+  message: "Demasiados intentos. Por favor, inténtalo de nuevo en 15 minutos.",
 });
 
 // 1. Registro (Signup)
@@ -78,7 +78,10 @@ router.post("/signup", authLimiter, async (req, res) => {
       planLevel: newUser.planLevel,
     });
   } catch (error) {
-    logger.error("Error en signup", { message: error.message, stack: error.stack });
+    logger.error("Error en signup", {
+      message: error.message,
+      stack: error.stack,
+    });
     res.status(500).json({ error: "Error al registrar usuario" });
   }
 });
@@ -119,7 +122,10 @@ router.post("/login", authLimiter, async (req, res) => {
       planLevel: user.planLevel,
     });
   } catch (error) {
-    logger.error("Error en login", { message: error.message, stack: error.stack });
+    logger.error("Error en login", {
+      message: error.message,
+      stack: error.stack,
+    });
     res.status(500).json({ error: "Error al iniciar sesión" });
   }
 });
@@ -141,10 +147,8 @@ router.get("/me", authenticate, async (req, res) => {
     const planMetadata = PlanService.getPlanMetadata(user.planLevel);
     const remainingCredits = Math.max(
       0,
-      planMetadata.access.daily_limit - user.usage.generationsCount
+      planMetadata.access.daily_limit - user.usage.generationsCount,
     );
-
-    logger.info(`[Backend] Enviando plan para usuario ${user.email}: ${user.planLevel}`, { planMetadata });
 
     res.json({
       user,
@@ -152,7 +156,10 @@ router.get("/me", authenticate, async (req, res) => {
       plan: planMetadata,
     });
   } catch (error) {
-    logger.error("Error en /me", { message: error.message, stack: error.stack });
+    logger.error("Error en /me", {
+      message: error.message,
+      stack: error.stack,
+    });
     res.status(500).json({ error: "Error al obtener perfil" });
   }
 });
@@ -165,12 +172,15 @@ router.post("/forgot-password", authLimiter, async (req, res) => {
 
     if (!user) {
       // Por seguridad, no revelamos si el usuario existe o no
-      return res.json({ message: "Si el correo existe, se ha enviado un enlace de recuperación." });
+      return res.json({
+        message:
+          "Si el correo existe, se ha enviado un enlace de recuperación.",
+      });
     }
 
     // Generar token aleatorio
-    const resetToken = crypto.randomBytes(20).toString('hex');
-    
+    const resetToken = crypto.randomBytes(20).toString("hex");
+
     // Guardar token y expiración (1 hora)
     user.resetPasswordToken = resetToken;
     user.resetPasswordExpires = Date.now() + 3600000; // 1 hora
@@ -178,14 +188,19 @@ router.post("/forgot-password", authLimiter, async (req, res) => {
 
     // URL de recuperación (Ajusta la URL base según tu entorno)
     // Preferimos usar una variable de entorno para la URL del cliente si existe
-    const clientUrl = process.env.CLIENT_URL || req.headers.origin
-    
+    const clientUrl = process.env.CLIENT_URL || req.headers.origin;
+
     // Enviar email real
     await EmailService.sendPasswordResetEmail(email, resetUrl);
 
-    res.json({ message: "Si el correo existe, se ha enviado un enlace de recuperación." });
+    res.json({
+      message: "Si el correo existe, se ha enviado un enlace de recuperación.",
+    });
   } catch (error) {
-    logger.error("Error en forgot-password", { message: error.message, stack: error.stack });
+    logger.error("Error en forgot-password", {
+      message: error.message,
+      stack: error.stack,
+    });
     res.status(500).json({ error: "Error al procesar la solicitud" });
   }
 });
@@ -198,11 +213,13 @@ router.post("/reset-password/:token", authLimiter, async (req, res) => {
 
     const user = await User.findOne({
       resetPasswordToken: token,
-      resetPasswordExpires: { $gt: Date.now() } // Verificar que no haya expirado
+      resetPasswordExpires: { $gt: Date.now() }, // Verificar que no haya expirado
     });
 
     if (!user) {
-      return res.status(400).json({ error: "El enlace es inválido o ha expirado" });
+      return res
+        .status(400)
+        .json({ error: "El enlace es inválido o ha expirado" });
     }
 
     // Hashear nueva contraseña
@@ -216,7 +233,10 @@ router.post("/reset-password/:token", authLimiter, async (req, res) => {
 
     res.json({ message: "Contraseña actualizada exitosamente" });
   } catch (error) {
-    logger.error("Error en reset-password", { message: error.message, stack: error.stack });
+    logger.error("Error en reset-password", {
+      message: error.message,
+      stack: error.stack,
+    });
     res.status(500).json({ error: "Error al restablecer la contraseña" });
   }
 });
