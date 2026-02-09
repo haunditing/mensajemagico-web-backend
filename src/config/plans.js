@@ -11,8 +11,8 @@ const PLAN_CONFIG = {
       },
       access: {
         daily_limit: 3,
-        occasions: ["pensamiento", "responder"],
-        exclusive_tones: false, // false significa ninguno o null
+        occasions: ["pensamiento", "responder", "amor", "birthday", "anniversary", "perdoname"],
+        exclusive_tones: ["romántico", "divertido", "corto", "formal", "profundo"],
         context_words_limit: 0, // Bloqueado para invitados
       },
       ai_config: {
@@ -31,8 +31,8 @@ const PLAN_CONFIG = {
       },
       access: {
         daily_limit: 5,
-        occasions: ["pensamiento", "responder", "visto", "amor", "birthday"],
-        exclusive_tones: ["romantic", "funny", "short"],
+        occasions: ["all"],
+        exclusive_tones: ["romántico", "divertido", "corto", "formal", "profundo", "directo", "sutil"],
         context_words_limit: 0, // Bloqueado para free
       },
       ai_config: {
