@@ -10,13 +10,33 @@ const PLAN_CONFIG = require("../config/plans");
 router.post("/checkout", async (req, res) => {
   const { userId, planId } = req.body; // planId puede ser 'premium_monthly' o 'premium_yearly'
 
+  logger.info(`Iniciando checkout Wompi`, { userId, planId });
+
   try {
     const user = await User.findById(userId);
     if (!user) return res.status(404).json({ error: "Usuario no encontrado" });
 
-    // Definir precio según el plan (Esto debería venir de tu config, hardcodeado por brevedad del ejemplo)
-    // Wompi usa centavos (COP). Ejemplo: $20.000 COP = 2000000
-    const amountInCents = 2000000; // $20.000 COP
+    // Definir precio según el plan y el intervalo seleccionado
+    const premiumConfig = PLAN_CONFIG.subscription_plans.premium;
+    let amountInCents;
+
+    // Selección explícita del precio
+    if (planId === "premium_yearly") {
+      amountInCents = premiumConfig.pricing_hooks.wompi_price_in_cents_yearly;
+    } else if (planId === "premium_monthly") {
+      amountInCents = premiumConfig.pricing_hooks.wompi_price_in_cents_monthly;
+    } else {
+      logger.warn(`Plan desconocido recibido: "${planId}". Usando precio mensual por defecto.`);
+      amountInCents = premiumConfig.pricing_hooks.wompi_price_in_cents_monthly;
+    }
+
+    logger.info(`Precio resuelto para Wompi: ${amountInCents} (Plan: ${planId})`);
+
+    if (!amountInCents) {
+      logger.error("Precio Wompi no configurado en plans.js", { planId });
+      return res.status(500).json({ error: "Error de configuración de precios" });
+    }
+
     const currency = "COP";
     const reference = `TX-${userId}-${Date.now()}`; // Referencia única
 

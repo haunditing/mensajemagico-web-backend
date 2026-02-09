@@ -91,6 +91,8 @@ const PLAN_CONFIG = {
       pricing_hooks: {
         stripe_price_id_monthly: "price_1Syif3D9BNQ52nHRE7qngWUu", // ID real de Stripe
         stripe_price_id_yearly: "price_1Syig1D9BNQ52nHRtvvanYpY", // ID real de Stripe
+        wompi_price_in_cents_monthly: 2000000, // $20.000 COP
+        wompi_price_in_cents_yearly: 19000000, // $190.000 COP
       },
     },
   },
