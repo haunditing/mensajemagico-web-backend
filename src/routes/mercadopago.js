@@ -7,7 +7,7 @@ const logger = require("../utils/logger");
 
 // 1. Crear Preferencia de Pago
 router.post("/create_preference", async (req, res) => {
-  const { userId, planId } = req.body;
+  const { userId, planId, country } = req.body;
   const clientUrl =
     process.env.CLIENT_URL ||
     req.headers.origin ||
@@ -20,18 +20,32 @@ router.post("/create_preference", async (req, res) => {
     const premiumConfig = PLAN_CONFIG.subscription_plans.premium;
     let price;
     let title;
+    let currency_id;
 
-    if (planId === "premium_yearly") {
-      price = premiumConfig.pricing_hooks.mercadopago_price_yearly;
-      title = "Suscripción Anual - MensajeMágico Premium";
+    if (country === "CO") {
+      currency_id = "COP";
+      if (planId === "premium_yearly") {
+        price = premiumConfig.pricing_hooks.mercadopago_price_yearly;
+        title = "Suscripción Anual - MensajeMágico Premium";
+      } else {
+        price = premiumConfig.pricing_hooks.mercadopago_price_monthly;
+        title = "Suscripción Mensual - MensajeMágico Premium";
+      }
     } else {
-      price = premiumConfig.pricing_hooks.mercadopago_price_monthly;
-      title = "Suscripción Mensual - MensajeMágico Premium";
+      currency_id = "USD";
+      if (planId === "premium_yearly") {
+        price = premiumConfig.pricing_hooks.mercadopago_price_yearly_usd;
+        title = "Suscripción Anual - MensajeMágico Premium (USD)";
+      } else {
+        price = premiumConfig.pricing_hooks.mercadopago_price_monthly_usd;
+        title = "Suscripción Mensual - MensajeMágico Premium (USD)";
+      }
     }
 
     const preference = await MercadoPagoService.createPreference({
       title,
       price,
+      currency_id,
       payerEmail: user.email,
       externalReference: userId, // Usamos el ID del usuario como referencia externa
       successUrl: `${clientUrl}/success`,

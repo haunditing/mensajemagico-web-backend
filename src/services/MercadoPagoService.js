@@ -14,6 +14,7 @@ const createPreference = async ({
   externalReference,
   successUrl,
   failureUrl,
+  currency_id,
 }) => {
   const preference = new Preference(client);
 
@@ -24,7 +25,7 @@ const createPreference = async ({
           title: title,
           quantity: quantity,
           unit_price: Number(price),
-          currency_id: "COP", // Ajustar según la moneda deseada o pasar como parámetro
+          currency_id: currency_id,
         },
       ],
       payer: {
