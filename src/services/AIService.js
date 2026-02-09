@@ -1,13 +1,23 @@
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 const logger = require("../utils/logger");
 
-const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
+const genAI = new GoogleGenerativeAI(process.env.AI_PI_KEY);
 
 // Cache simple en memoria
 const responseCache = new Map();
 const CACHE_TTL_MS = 1000 * 60 * 60; // 1 hora
 
-const generate = async (aiConfig, { occasion, tone, contextWords, relationship, receivedText, formatInstruction }) => {
+const generate = async (
+  aiConfig,
+  {
+    occasion,
+    tone,
+    contextWords,
+    relationship,
+    receivedText,
+    formatInstruction,
+  },
+) => {
   // Generar clave de caché única
   const cacheKey = JSON.stringify({
     model: aiConfig.model,
@@ -17,7 +27,7 @@ const generate = async (aiConfig, { occasion, tone, contextWords, relationship, 
     context: contextWords || "",
     relationship: relationship || "",
     receivedText: receivedText || "",
-    format: formatInstruction || ""
+    format: formatInstruction || "",
   });
 
   if (responseCache.has(cacheKey)) {
@@ -59,7 +69,7 @@ const generate = async (aiConfig, { occasion, tone, contextWords, relationship, 
 
     responseCache.set(cacheKey, {
       text: generatedText,
-      timestamp: Date.now()
+      timestamp: Date.now(),
     });
 
     return generatedText;
