@@ -18,18 +18,11 @@ const generate = async (
     formatInstruction,
   },
 ) => {
-  // Generar clave de caché única
-  const cacheKey = JSON.stringify({
-    model: aiConfig.model,
-    style: aiConfig.prompt_style,
-    length: aiConfig.length_instruction,
-    occasion,
-    tone,
-    context: contextWords || "",
-    relationship: relationship || "",
-    receivedText: receivedText || "",
-    format: formatInstruction || "",
-  });
+  // Ordenar las claves del objeto antes de stringify para asegurar consistencia
+  const cacheKey = crypto
+    .createHash("md5")
+    .update(JSON.stringify(params, Object.keys(params).sort()))
+    .digest("hex");
 
   if (responseCache.has(cacheKey)) {
     const { text, timestamp } = responseCache.get(cacheKey);
@@ -48,22 +41,55 @@ const generate = async (
 
   try {
     // 1. Configurar el modelo con la instrucción de sistema (personalidad)
-    const systemInstruction = `${aiConfig.prompt_style} ${aiConfig.length_instruction || ""}`.trim();
+    //const systemInstruction = `${aiConfig.prompt_style} ${aiConfig.length_instruction || ""}`.trim();
+    // Dentro de la función generate...
+    const systemInstruction = {
+      role: "system",
+      parts: [
+        {
+          text: `
+    ${aiConfig.prompt_style} 
+    ${aiConfig.length_instruction || ""}
+    STRICT_RULES:
+    - Plan GUEST: Breve, sin emojis, respuesta directa.
+    - Plan FREEMIUM: Empático, 1 emoji, tono conversacional.
+    - Plan PREMIUM: Análisis psicológico, estructura elegante, copywriting de alta conversión.
+  `.trim(),
+        },
+      ],
+    };
 
     const model = genAI.getGenerativeModel({
       model: aiConfig.model,
-      systemInstruction: systemInstruction,
+      // Google SDK espera systemInstruction como un string o un objeto específico
+      systemInstruction: {
+        parts: [{ text: aiConfig.system_prompt_logic }],
+      },
     });
 
     // 2. Configuración de generación (temperatura, tokens)
     const generationConfig = {
       temperature: aiConfig.temperature,
+      // Limitar tokens en planes inferiores para ahorrar costes
+      maxOutputTokens: aiConfig.plan === "Guest" ? 100 : 500,
+      topP: 0.95,
+      topK: 40,
     };
+
+    // Implementar "Safety Settings" para evitar respuestas tóxicas en mensajes delicados
+    const safetySettings = [
+      {
+        category: "HARM_CATEGORY_HARASSMENT",
+        threshold: "BLOCK_MEDIUM_AND_ABOVE",
+      },
+      { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_ONLY_HIGH" },
+    ];
 
     // 3. Generar contenido
     const result = await model.generateContent({
       contents: [{ role: "user", parts: [{ text: promptText }] }],
       generationConfig,
+      safetySettings,
     });
 
     const response = await result.response;
