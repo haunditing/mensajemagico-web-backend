@@ -1,27 +1,26 @@
 const { GoogleGenerativeAI } = require("@google/generative-ai");
+const crypto = require("crypto"); // 👈 Error 1: Faltaba esta importación
 const logger = require("../utils/logger");
 
 const genAI = new GoogleGenerativeAI(process.env.AI_API_KEY);
 
-// Cache simple en memoria
 const responseCache = new Map();
-const CACHE_TTL_MS = 1000 * 60 * 60; // 1 hora
+const CACHE_TTL_MS = 1000 * 60 * 60;
 
-const generate = async (
-  aiConfig,
-  {
+const generate = async (aiConfig, data) => {
+  const {
     occasion,
     tone,
     contextWords,
     relationship,
     receivedText,
     formatInstruction,
-  },
-) => {
-  // Ordenar las claves del objeto antes de stringify para asegurar consistencia
+  } = data;
+
+  // 👈 Error 1 (cont.): Usar 'data' en lugar de 'params' y generar hash
   const cacheKey = crypto
     .createHash("md5")
-    .update(JSON.stringify(params, Object.keys(params).sort()))
+    .update(JSON.stringify(data, Object.keys(data).sort()))
     .digest("hex");
 
   if (responseCache.has(cacheKey)) {
@@ -40,43 +39,29 @@ const generate = async (
   `.trim();
 
   try {
-    // 1. Configurar el modelo con la instrucción de sistema (personalidad)
-    //const systemInstruction = `${aiConfig.prompt_style} ${aiConfig.length_instruction || ""}`.trim();
-    // Dentro de la función generate...
-    const systemInstruction = {
-      role: "system",
-      parts: [
-        {
-          text: `
-    ${aiConfig.prompt_style} 
-    ${aiConfig.length_instruction || ""}
-    STRICT_RULES:
-    - Plan GUEST: Breve, sin emojis, respuesta directa.
-    - Plan FREEMIUM: Empático, 1 emoji, tono conversacional.
-    - Plan PREMIUM: Análisis psicológico, estructura elegante, copywriting de alta conversión.
-  `.trim(),
-        },
-      ],
-    };
+    // 👈 Error 2 & 3: Limpiamos la instrucción de sistema
+    // Consolidamos la lógica de planes en un solo string limpio para el SDK
+    const systemInstructionText = `
+      ${aiConfig.prompt_style || "Actúa como un asistente de mensajería."} 
+      ${aiConfig.length_instruction || ""}
+      STRICT_RULES:
+      - Plan GUEST: Breve, sin emojis, respuesta directa.
+      - Plan FREEMIUM: Empático, 1 emoji, tono conversacional.
+      - Plan PREMIUM: Análisis psicológico, estructura elegante, copywriting de alta conversión.
+    `.trim();
 
     const model = genAI.getGenerativeModel({
-      model: aiConfig.model,
-      // Google SDK espera systemInstruction como un string o un objeto específico
-      systemInstruction: {
-        parts: [{ text: aiConfig.system_prompt_logic }],
-      },
+      model: aiConfig.model || "gemini-1.5-flash",
+      systemInstruction: systemInstructionText, // El SDK acepta el string directamente aquí
     });
 
-    // 2. Configuración de generación (temperatura, tokens)
     const generationConfig = {
-      temperature: aiConfig.temperature,
-      // Limitar tokens en planes inferiores para ahorrar costes
+      temperature: aiConfig.temperature || 0.7,
       maxOutputTokens: aiConfig.plan === "Guest" ? 100 : 500,
       topP: 0.95,
       topK: 40,
     };
 
-    // Implementar "Safety Settings" para evitar respuestas tóxicas en mensajes delicados
     const safetySettings = [
       {
         category: "HARM_CATEGORY_HARASSMENT",
@@ -85,7 +70,6 @@ const generate = async (
       { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_ONLY_HIGH" },
     ];
 
-    // 3. Generar contenido
     const result = await model.generateContent({
       contents: [{ role: "user", parts: [{ text: promptText }] }],
       generationConfig,
@@ -102,8 +86,7 @@ const generate = async (
 
     return generatedText;
   } catch (error) {
-    logger.error("Error en AIService", { error });
-    // Manejo de errores seguro para no exponer detalles técnicos al cliente
+    logger.error("Error en AIService", { error: error.message });
     throw new Error("La IA no pudo completar la solicitud en este momento.");
   }
 };
