@@ -8,6 +8,7 @@ const magicRoutes = require("./src/routes/magic");
 const authRoutes = require("./src/routes/auth");
 const configRoutes = require("./src/routes/config");
 const favoritesRoutes = require("./src/routes/favorites");
+const wompiRoutes = require("./src/routes/wompi");
 const logger = require("./src/utils/logger");
 
 const app = express();
@@ -44,6 +45,7 @@ app.use("/api/magic", magicRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/config", configRoutes);
 app.use("/api/favorites", favoritesRoutes);
+app.use("/api", wompiRoutes); // Montamos en /api para que quede /api/webhooks/wompi
 
 // Manejo de errores global
 app.use((err, req, res, next) => {
