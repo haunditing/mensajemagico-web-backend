@@ -35,10 +35,10 @@ router.post("/create_preference", async (req, res) => {
       currency_id = "USD";
       if (planId === "premium_yearly") {
         price = premiumConfig.pricing_hooks.mercadopago_price_yearly_usd;
-        title = "Suscripción Anual - MensajeMágico Premium (USD)";
+        title = "Suscripción Anual - MensajeMágico Premium ($47,90 USD)";
       } else {
         price = premiumConfig.pricing_hooks.mercadopago_price_monthly_usd;
-        title = "Suscripción Mensual - MensajeMágico Premium (USD)";
+        title = "Suscripción Mensual - MensajeMágico Premium ($4.99 USD)";
       }
     }
 
