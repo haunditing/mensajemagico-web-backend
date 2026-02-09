@@ -18,6 +18,7 @@ const generate = async (aiConfig, data) => {
     formatInstruction,
     userLocation,
     planLevel,
+    neutralMode,
   } = data;
 
   // 👈 Error 1 (cont.): Usar 'data' en lugar de 'params' y generar hash
@@ -33,7 +34,7 @@ const generate = async (aiConfig, data) => {
   }
 
   // Lógica de Tono Regional Premium (Delegada al servicio escalable)
-  const regionalBoost = RegionalContextService.getRegionalBoost(userLocation, planLevel);
+  const regionalBoost = RegionalContextService.getRegionalBoost(userLocation, planLevel, neutralMode);
 
   const promptText = `
     Escribe un mensaje para la ocasión: ${occasion}.

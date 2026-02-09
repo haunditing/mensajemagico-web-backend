@@ -14,6 +14,12 @@ const UserSchema = new mongoose.Schema({
     default: "freemium", // Asumimos freemium si se registra
   },
 
+  // Ubicación y Preferencias
+  location: { type: String },
+  preferences: {
+    neutralMode: { type: Boolean, default: false },
+  },
+
   // Control de uso
   usage: {
     lastReset: { type: Date, default: Date.now },

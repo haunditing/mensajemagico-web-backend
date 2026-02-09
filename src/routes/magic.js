@@ -61,6 +61,7 @@ router.post("/generate", getUser, async (req, res) => {
       formatInstruction,
       userLocation,
       planLevel: user.planLevel, // Pasamos el nivel de plan para la lógica condicional
+      neutralMode: user.preferences?.neutralMode, // Preferencia de modo neutro
     });
 
     // 4. Incrementar uso
