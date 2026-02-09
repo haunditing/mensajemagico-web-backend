@@ -11,12 +11,25 @@ const PLAN_CONFIG = {
       },
       access: {
         daily_limit: 3,
-        occasions: ["pensamiento", "responder", "amor", "birthday", "anniversary", "perdoname"],
-        exclusive_tones: ["romántico", "divertido", "corto", "formal", "profundo"],
+        occasions: [
+          "pensamiento",
+          "responder",
+          "amor",
+          "birthday",
+          "anniversary",
+          "perdoname",
+        ],
+        exclusive_tones: [
+          "romántico",
+          "divertido",
+          "corto",
+          "formal",
+          "profundo",
+        ],
         context_words_limit: 0, // Bloqueado para invitados
       },
       ai_config: {
-        model: "gemini-1.5-flash",
+        model: "gemini-2.5-flash",
         temperature: 0.5,
         max_tokens: 100,
         prompt_style: "Eres un asistente útil, breve y directo.",
@@ -32,11 +45,19 @@ const PLAN_CONFIG = {
       access: {
         daily_limit: 5,
         occasions: ["all"],
-        exclusive_tones: ["romántico", "divertido", "corto", "formal", "profundo", "directo", "sutil"],
+        exclusive_tones: [
+          "romántico",
+          "divertido",
+          "corto",
+          "formal",
+          "profundo",
+          "directo",
+          "sutil",
+        ],
         context_words_limit: 0, // Bloqueado para free
       },
       ai_config: {
-        model: "gemini-1.5-flash",
+        model: "gemini-2.5-flash",
         temperature: 0.75,
         max_tokens: 250,
         prompt_style: "Eres un asistente creativo, amigable y empático.",
@@ -56,7 +77,7 @@ const PLAN_CONFIG = {
         context_words_limit: 50,
       },
       ai_config: {
-        model: "gemini-3-pro",
+        model: "gemini-3-flash",
         temperature: 0.95,
         max_tokens: 800,
         prompt_style:
