@@ -2,6 +2,7 @@ const express = require("express");
 const router = express.Router();
 const Stripe = require("stripe");
 const User = require("../models/User");
+const MercadoPagoService = require("../services/MercadoPagoService");
 const PLAN_CONFIG = require("../config/plans");
 const logger = require("../utils/logger");
 
@@ -130,12 +131,65 @@ router.get("/subscription-status", async (req, res) => {
     let subscriptionInfo = null;
 
     if (user.subscriptionId) {
-      const sub = await stripe.subscriptions.retrieve(user.subscriptionId);
-      subscriptionInfo = {
-        renewalDate: new Date(sub.current_period_end * 1000),
-        cancelAtPeriodEnd: sub.cancel_at_period_end,
-        status: sub.status,
-      };
+      // Detectar si es MercadoPago (prefijo mp_) o Stripe
+      if (user.subscriptionId.startsWith("mp_sub_")) {
+        // Lógica para Suscripciones Recurrentes (PreApproval)
+        const preApprovalId = user.subscriptionId.replace("mp_sub_", "");
+        try {
+          const sub = await MercadoPagoService.getPreApproval(preApprovalId);
+          subscriptionInfo = {
+            status: sub.status === "authorized" ? "active" : "inactive",
+            renewalDate: sub.next_payment_date ? new Date(sub.next_payment_date) : null,
+            cancelAtPeriodEnd: false, // MP cancela inmediatamente o pausa
+            provider: "mercadopago",
+          };
+        } catch (error) {
+          logger.error("Error consultando suscripción MP", { error });
+        }
+      } else if (user.subscriptionId.startsWith("mp_")) {
+        // Lógica Legacy: Pago único (Checkout Pro)
+        const paymentId = user.subscriptionId.replace("mp_", "");
+        try {
+          // 1. Intentar obtener el pago directo por ID
+          const payment = await MercadoPagoService.getPayment(paymentId);
+          
+          // Estimación de fecha de renovación (30 días) ya que MP Checkout Pro es pago único
+          const paymentDate = new Date(payment.date_approved || payment.date_created);
+          const renewalDate = new Date(paymentDate);
+          renewalDate.setDate(renewalDate.getDate() + 30);
+
+          subscriptionInfo = {
+            status: payment.status === "approved" ? "active" : "inactive",
+            renewalDate: renewalDate,
+            cancelAtPeriodEnd: false, // No es recurrente automático
+            provider: "mercadopago"
+          };
+        } catch (mpError) {
+          logger.warn("Error consultando pago MP, intentando búsqueda...", { error: mpError.message });
+          
+          // 2. Fallback: Buscar el último pago aprobado de este usuario
+          const search = await MercadoPagoService.searchPayment({
+             external_reference: userId, 
+             sort: 'date_created', 
+             criteria: 'desc',
+             limit: 1
+          });
+          
+          if (search.results && search.results.length > 0 && search.results[0].status === 'approved') {
+             // Lógica similar si encontramos un pago válido reciente
+             subscriptionInfo = { status: 'active', provider: 'mercadopago' };
+          }
+        }
+      } else {
+        // Lógica original de Stripe
+        const sub = await stripe.subscriptions.retrieve(user.subscriptionId);
+        subscriptionInfo = {
+          renewalDate: new Date(sub.current_period_end * 1000),
+          cancelAtPeriodEnd: sub.cancel_at_period_end,
+          status: sub.status,
+          provider: "stripe"
+        };
+      }
     }
 
     res.json({ planLevel: user.planLevel, subscription: subscriptionInfo });
@@ -156,6 +210,39 @@ router.post("/cancel-subscription", async (req, res) => {
 
     if (!user.subscriptionId) {
       return res.status(400).json({ error: "No se encontró una suscripción activa" });
+    }
+
+    // Lógica para MercadoPago
+    if (user.subscriptionId.startsWith("mp_")) {
+      // Extraer ID limpiando prefijos (soporta mp_ y mp_sub_)
+      const id = user.subscriptionId.replace("mp_sub_", "").replace("mp_", "");
+      try {
+        // Caso 1: Pago único (Checkout Pro) - Solo calculamos fecha de fin
+        // Como es pago único, no hay recurrencia que cancelar, solo informamos.
+        const payment = await MercadoPagoService.getPayment(id);
+        const paymentDate = new Date(
+          payment.date_approved || payment.date_created,
+        );
+        const cancelAt = new Date(paymentDate);
+        cancelAt.setDate(cancelAt.getDate() + 30);
+
+        return res.json({
+          message: "Tu suscripción finalizará al terminar el periodo actual.",
+          cancelAt: cancelAt,
+        });
+      } catch (error) {
+        // Caso 2: Suscripción recurrente (PreApproval) - Intentamos cancelar
+        try {
+          await MercadoPagoService.cancelPreApproval(id);
+          return res.json({
+            message: "Suscripción cancelada exitosamente.",
+            cancelAt: new Date(),
+          });
+        } catch (err) {
+          logger.error("Error cancelando suscripción MP", { error: err });
+          return res.status(500).json({ error: "Error al cancelar la suscripción" });
+        }
+      }
     }
 
     const subscription = await stripe.subscriptions.update(user.subscriptionId, {

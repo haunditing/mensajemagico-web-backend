@@ -21,12 +21,14 @@ router.post("/create_preference", async (req, res) => {
     let price;
     let title;
     let currency_id;
+    let frequency = 1;
 
     if (country === "CO") {
       currency_id = "COP";
       if (planId === "premium_yearly") {
         price = premiumConfig.pricing_hooks.mercadopago_price_yearly;
         title = "Suscripción Anual - MensajeMágico Premium";
+        frequency = 12;
       } else {
         price = premiumConfig.pricing_hooks.mercadopago_price_monthly;
         title = "Suscripción Mensual - MensajeMágico Premium";
@@ -36,37 +38,62 @@ router.post("/create_preference", async (req, res) => {
       if (planId === "premium_yearly") {
         price = premiumConfig.pricing_hooks.mercadopago_price_yearly_usd;
         title = "Suscripción Anual - MensajeMágico Premium ($47,90 USD)";
+        frequency = 12;
       } else {
         price = premiumConfig.pricing_hooks.mercadopago_price_monthly_usd;
         title = "Suscripción Mensual - MensajeMágico Premium ($4.99 USD)";
       }
     }
 
-    const preference = await MercadoPagoService.createPreference({
+    // Usamos createSubscription en lugar de createPreference
+    const subscription = await MercadoPagoService.createSubscription({
       title,
       price,
       currency_id,
       payerEmail: user.email,
       externalReference: userId, // Usamos el ID del usuario como referencia externa
-      successUrl: `${clientUrl}/success`,
-      failureUrl: `${clientUrl}/pricing`,
+      backUrl: `${clientUrl}/success`, // Las suscripciones usan un solo back_url
+      frequency,
+      frequencyType: "months",
     });
 
     res.json({
-      init_point: preference.init_point,
-      sandbox_init_point: preference.sandbox_init_point,
+      init_point: subscription.init_point,
+      sandbox_init_point: subscription.sandbox_init_point, // A veces MP devuelve solo init_point para suscripciones
     });
   } catch (error) {
-    logger.error("Error creando preferencia MercadoPago", { error });
-    res.status(500).json({ error: "Error al iniciar pago con MercadoPago" });
+    logger.error("Error creando suscripción MercadoPago", { error });
+    res.status(500).json({ error: "Error al iniciar suscripción con MercadoPago" });
   }
 });
 
 // 2. Webhook (Notificaciones de pago)
 router.post("/webhook", async (req, res) => {
-  const { type, data } = req.body;
+  // MercadoPago envía 'type' o 'topic' dependiendo de la versión del webhook
+  const type = req.body.type || req.body.topic;
+  const data = req.body.data || { id: req.body.id };
 
   try {
+    // Manejo de Suscripciones (Preapprovals)
+    if (type === "subscription_preapproval") {
+      const subscriptionId = data.id;
+      logger.info("Webhook Suscripción MP recibido", { subscriptionId });
+
+      const subscription = await MercadoPagoService.getPreApproval(subscriptionId);
+
+      if (subscription.status === "authorized") {
+        const userId = subscription.external_reference;
+        if (userId) {
+          await User.findByIdAndUpdate(userId, {
+            planLevel: "premium",
+            // Usamos prefijo mp_sub_ para distinguir de pagos únicos
+            subscriptionId: `mp_sub_${subscription.id}`,
+          });
+          logger.info(`Usuario ${userId} suscrito a Premium (MP Sub: ${subscription.id})`);
+        }
+      }
+    }
+    // Mantenemos lógica de pago único por si acaso o para renovaciones
     if (type === "payment") {
       const paymentId = data.id;
       logger.info("Webhook MercadoPago recibido", { paymentId });
