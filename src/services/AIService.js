@@ -22,6 +22,7 @@ const generate = async (
   const cacheKey = JSON.stringify({
     model: aiConfig.model,
     style: aiConfig.prompt_style,
+    length: aiConfig.length_instruction,
     occasion,
     tone,
     context: contextWords || "",
@@ -47,15 +48,16 @@ const generate = async (
 
   try {
     // 1. Configurar el modelo con la instrucción de sistema (personalidad)
+    const systemInstruction = `${aiConfig.prompt_style} ${aiConfig.length_instruction || ""}`.trim();
+
     const model = genAI.getGenerativeModel({
       model: aiConfig.model,
-      systemInstruction: aiConfig.prompt_style,
+      systemInstruction: systemInstruction,
     });
 
     // 2. Configuración de generación (temperatura, tokens)
     const generationConfig = {
       temperature: aiConfig.temperature,
-      maxOutputTokens: aiConfig.max_tokens,
     };
 
     // 3. Generar contenido

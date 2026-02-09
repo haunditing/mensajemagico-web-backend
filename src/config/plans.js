@@ -31,8 +31,8 @@ const PLAN_CONFIG = {
       ai_config: {
         model: "gemini-2.5-flash",
         temperature: 0.5,
-        max_tokens: 500, // Aumentado de 100 a 500 para permitir JSON completo
         prompt_style: "Eres un asistente útil, breve y directo.",
+        length_instruction: "IMPORTANTE: El mensaje debe ser muy corto (máximo 2 frases).",
       },
     },
     freemium: {
@@ -59,8 +59,8 @@ const PLAN_CONFIG = {
       ai_config: {
         model: "gemini-2.5-flash",
         temperature: 0.75,
-        max_tokens: 800, // Aumentado de 250 a 800
         prompt_style: "Eres un asistente creativo, amigable y empático.",
+        length_instruction: "IMPORTANTE: El mensaje debe ser conciso (máximo 1 párrafo breve).",
       },
     },
     premium: {
@@ -79,9 +79,9 @@ const PLAN_CONFIG = {
       ai_config: {
         model: "gemini-3-pro-preview",
         temperature: 0.95,
-        max_tokens: 1500, // Aumentado para textos largos
         prompt_style:
           "Eres un experto en redacción, con inteligencia emocional superior y gran creatividad.",
+        length_instruction: "Extiéndete lo necesario para crear un mensaje detallado y emotivo.",
       },
       pricing: {
         monthly: 4.99,
