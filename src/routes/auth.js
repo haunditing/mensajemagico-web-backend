@@ -241,4 +241,39 @@ router.post("/reset-password/:token", authLimiter, async (req, res) => {
   }
 });
 
+// 6. Actualizar Perfil (Ubicación manual)
+router.put("/profile", authenticate, async (req, res) => {
+  try {
+    const { location } = req.body;
+    const user = await User.findById(req.userId);
+
+    if (!user) {
+      return res.status(404).json({ error: "Usuario no encontrado" });
+    }
+
+    // Permitir borrar la ubicación enviando string vacío o null
+    if (location !== undefined) {
+      if (location) {
+        if (typeof location !== "string" || location.length > 50) {
+          return res.status(400).json({
+            error: "La ubicación debe ser texto y no exceder los 50 caracteres.",
+          });
+        }
+        // Validación de caracteres permitidos (Letras, espacios, comas, puntos, guiones)
+        const validLocationRegex = /^[a-zA-Z0-9\s,.\-áéíóúÁÉÍÓÚñÑüÜ]+$/;
+        if (!validLocationRegex.test(location)) {
+          return res.status(400).json({ error: "La ubicación contiene caracteres no válidos." });
+        }
+      }
+      user.location = location;
+    }
+
+    await user.save();
+    res.json({ message: "Perfil actualizado", user });
+  } catch (error) {
+    logger.error("Error actualizando perfil", { error });
+    res.status(500).json({ error: "Error al actualizar perfil" });
+  }
+});
+
 module.exports = router;
