@@ -68,8 +68,8 @@ const PLAN_CONFIG = {
         yearly_monthly_equivalent: 3.99,
       },
       pricing_hooks: {
-        stripe_price_id_monthly: "price_1SyfneBDtjkwsSoNcCW7Kw6m", // ID real de Stripe
-        stripe_price_id_yearly: "price_1SyfpKBDtjkwsSoNMqeYdxnt", // ID real de Stripe
+        stripe_price_id_monthly: "price_1Syif3D9BNQ52nHRE7qngWUu", // ID real de Stripe
+        stripe_price_id_yearly: "price_1Syig1D9BNQ52nHRtvvanYpY", // ID real de Stripe
       },
     },
   },

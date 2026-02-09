@@ -144,6 +144,8 @@ router.get("/me", authenticate, async (req, res) => {
       planMetadata.access.daily_limit - user.usage.generationsCount
     );
 
+    logger.info(`[Backend] Enviando plan para usuario ${user.email}: ${user.planLevel}`, { planMetadata });
+
     res.json({
       user,
       remainingCredits,
