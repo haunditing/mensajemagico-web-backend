@@ -1,7 +1,7 @@
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 const logger = require("../utils/logger");
 
-const genAI = new GoogleGenerativeAI(process.env.AI_PI_KEY);
+const genAI = new GoogleGenerativeAI(process.env.AI_API_KEY);
 
 // Cache simple en memoria
 const responseCache = new Map();
