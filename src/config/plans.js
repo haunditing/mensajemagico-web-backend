@@ -77,7 +77,7 @@ const PLAN_CONFIG = {
         context_words_limit: 50,
       },
       ai_config: {
-        model: "gemini-3-flash",
+        model: "gemini-3-pro-preview",
         temperature: 0.95,
         max_tokens: 800,
         prompt_style:
