@@ -15,22 +15,38 @@ const generateCheckoutSignature = (reference, amountInCents, currency) => {
 
 /**
  * Valida la firma (checksum) de un evento Webhook de Wompi.
- * Fórmula: SHA256(transaction.id + transaction.status + transaction.amount_in_cents + timestamp + secreto_eventos)
- * Nota: Wompi usa el 'Events Secret' para webhooks, que puede ser distinto al de integridad.
+ * Usa las propiedades indicadas en el evento para reconstruir la cadena.
  */
 const verifyWebhookSignature = (eventData) => {
   const eventsSecret = process.env.WOMPI_EVENTS_SECRET || process.env.WOMPI_INTEGRITY_SECRET;
   if (!eventsSecret) throw new Error("WOMPI_EVENTS_SECRET no configurado");
 
   const { data, signature, timestamp } = eventData;
-  const { transaction } = data;
-  
-  // Extraer checksum recibido
-  const receivedChecksum = signature.checksum;
+  const { checksum, properties } = signature;
 
-  // Calcular checksum localmente
-  // Cadena: id_transaccion + estado + monto_centavos + timestamp + secreto
-  const chain = `${transaction.id}${transaction.status}${transaction.amount_in_cents}${timestamp}${eventsSecret}`;
+  let chain = "";
+  
+  // Wompi indica qué propiedades usar para el checksum en el array 'properties'
+  // Ejemplo: ["transaction.id", "transaction.status", "transaction.amount_in_cents"]
+  if (Array.isArray(properties)) {
+    properties.forEach(prop => {
+      const keys = prop.split('.');
+      let value = data;
+      // Navegar el objeto data para encontrar el valor (ej. data.transaction.id)
+      for (const key of keys) {
+        if (value) value = value[key];
+      }
+      chain += value;
+    });
+  } else {
+    // Fallback por si no viene properties (aunque Wompi siempre lo envía)
+    const { transaction } = data;
+    chain = `${transaction.id}${transaction.status}${transaction.amount_in_cents}`;
+  }
+
+  chain += timestamp;
+  chain += eventsSecret;
+
   const calculatedChecksum = crypto.createHash('sha256').update(chain).digest('hex');
 
   return receivedChecksum === calculatedChecksum;

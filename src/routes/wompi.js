@@ -42,12 +42,14 @@ router.post("/checkout", async (req, res) => {
 // Wompi envía una petición POST cuando el estado de la transacción cambia
 router.post("/webhooks/wompi", async (req, res) => {
   const event = req.body;
+  
+  logger.info("Webhook Wompi recibido", { reference: event?.data?.transaction?.reference, status: event?.data?.transaction?.status });
 
   try {
     // 1. Validar firma de seguridad (Checksum)
     const isValid = WompiService.verifyWebhookSignature(event);
     if (!isValid) {
-      logger.warn("Firma de Webhook Wompi inválida", { event });
+      logger.warn("Firma de Webhook Wompi inválida", { signature: event.signature });
       return res.status(400).json({ error: "Firma inválida" });
     }
 
