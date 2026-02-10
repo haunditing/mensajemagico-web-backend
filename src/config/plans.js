@@ -29,8 +29,8 @@ const PLAN_CONFIG = {
         context_words_limit: 0, // Bloqueado para invitados
       },
       ai_config: {
-        model: "gemini-2.5-flash",
-        temperature: 0.5,
+        model: process.env.AI_MODEL_GUEST || "gemini-2.5-flash",
+        temperature: process.env.AI_TEMP_GUEST ? Number(process.env.AI_TEMP_GUEST) : 0.5,
         prompt_style: "Eres un asistente útil, breve y directo.",
         length_instruction: "IMPORTANTE: El mensaje debe ser muy corto (máximo 2 frases).",
       },
@@ -57,8 +57,8 @@ const PLAN_CONFIG = {
         context_words_limit: 0, // Bloqueado para free
       },
       ai_config: {
-        model: "gemini-2.5-flash",
-        temperature: 0.75,
+        model: process.env.AI_MODEL_FREE || "gemini-2.5-flash",
+        temperature: process.env.AI_TEMP_FREE ? Number(process.env.AI_TEMP_FREE) : 0.75,
         prompt_style: "Eres un asistente creativo, amigable y empático.",
         length_instruction: "IMPORTANTE: El mensaje debe ser conciso (máximo 1 párrafo breve).",
       },
@@ -77,8 +77,8 @@ const PLAN_CONFIG = {
         context_words_limit: 50,
       },
       ai_config: {
-        model: "gemini-3-pro-preview",
-        temperature: 0.95,
+        model: process.env.AI_MODEL_PREMIUM || "gemini-3-pro-preview",
+        temperature: process.env.AI_TEMP_PREMIUM ? Number(process.env.AI_TEMP_PREMIUM) : 0.95,
         prompt_style:
           "Eres un experto en redacción, con inteligencia emocional superior y gran creatividad.",
         length_instruction: "Extiéndete lo necesario para crear un mensaje detallado y emotivo.",

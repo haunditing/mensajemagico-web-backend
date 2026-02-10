@@ -4,6 +4,7 @@ const User = require("../models/User");
 const PlanService = require("../services/PlanService");
 const AIService = require("../services/AIService");
 const logger = require("../utils/logger");
+const GuardianService = require("../services/GuardianService");
 
 // Middleware simulado para obtener usuario
 const getUser = async (req, res, next) => {
@@ -40,6 +41,9 @@ router.post("/generate", getUser, async (req, res) => {
     receivedText,
     formatInstruction,
     userLocation, // Recibimos la ubicación (puede venir del frontend o un middleware de IP)
+    snoozeCount,
+    relationalHealth,
+    contactId,
   } = req.body;
   const user = req.user;
 
@@ -50,6 +54,17 @@ router.post("/generate", getUser, async (req, res) => {
 
     // 2. Obtener configuración de IA para este plan
     const aiConfig = PlanService.getAIConfig(user.planLevel);
+
+    // 2.5 Lógica del Guardián: Obtener contexto de la relación
+    let guardianContext = {
+      snoozeCount: snoozeCount || 0,
+      relationalHealth: relationalHealth || 5,
+    };
+
+    if (contactId) {
+      const context = await GuardianService.getContext(user._id, contactId);
+      guardianContext = { ...guardianContext, ...context };
+    }
 
     // 3. Llamada al servicio de IA
     const generatedText = await AIService.generate(aiConfig, {
@@ -62,10 +77,21 @@ router.post("/generate", getUser, async (req, res) => {
       userLocation,
       planLevel: user.planLevel, // Pasamos el nivel de plan para la lógica condicional
       neutralMode: user.preferences?.neutralMode, // Preferencia de modo neutro
+      snoozeCount: guardianContext.snoozeCount,
+      relationalHealth: guardianContext.relationalHealth,
     });
 
     // 4. Incrementar uso
     await user.incrementUsage();
+
+    // 4.5 Guardar historial en el Guardián (Si hay un contacto asociado)
+    if (contactId) {
+      await GuardianService.recordInteraction(user._id, contactId, {
+        occasion,
+        tone,
+        content: generatedText
+      });
+    }
 
     // 5. Respuesta final
     const planMetadata = PlanService.getPlanMetadata(user.planLevel);

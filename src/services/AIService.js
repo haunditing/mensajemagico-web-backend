@@ -19,6 +19,8 @@ const generate = async (aiConfig, data) => {
     userLocation,
     planLevel,
     neutralMode,
+    snoozeCount = 0,
+    relationalHealth = 5,
   } = data;
 
   // 👈 Error 1 (cont.): Usar 'data' en lugar de 'params' y generar hash
@@ -37,12 +39,18 @@ const generate = async (aiConfig, data) => {
   const regionalBoost = RegionalContextService.getRegionalBoost(userLocation, planLevel, neutralMode);
 
   const promptText = `
-    Escribe un mensaje para la ocasión: ${occasion}.
-    ${relationship ? `Relación: ${relationship}.` : ""}
-    Tono: ${tone}.
-    ${receivedText ? `En respuesta a: "${receivedText}".` : ""}
-    ${contextWords ? `Contexto/Palabras clave: ${contextWords}` : ""}
-    ${regionalBoost}
+    ### INPUT DATA (Contexto del Algoritmo)
+    - **UserPlan**: ${planLevel ? planLevel.toUpperCase() : "GUEST"}
+    - **RelationalHealth**: ${relationalHealth} (1-10)
+    - **SnoozeCount**: ${snoozeCount}
+    - **Region**: ${userLocation || "Desconocida"}
+    - **Occasion**: ${occasion}
+    - **Relationship**: ${relationship || "General"}
+    - **Tone**: ${tone}
+    - **Context**: ${contextWords || "Ninguno"}
+    - **ReceivedText**: ${receivedText || "N/A"}
+    - **RegionalContext**: ${regionalBoost}
+
     ${formatInstruction || ""}
   `.trim();
 
@@ -50,13 +58,31 @@ const generate = async (aiConfig, data) => {
     // 👈 Error 2 & 3: Limpiamos la instrucción de sistema
     // Consolidamos la lógica de planes en un solo string limpio para el SDK
     const systemInstructionText = `
+      ### ROLE
+      Actúas como el "Guardián de Sentimiento", un motor de inteligencia emocional para una Web App de mensajería proactiva. Tu misión es transformar recordatorios fríos en conexiones humanas significativas, priorizando la cultura de Cartagena y la Costa Caribe si el contexto lo permite.
+
+      ### OPERATING MODES (Lógica de Negocio)
+      #### 1. MODO ANÁLISIS (Para todos los planes)
+      - Analiza la salud de la relación (Input: RelationalHealth). Si es < 4, el tono debe ser de "Recuperación de Vínculo" (humilde, sin presión).
+      - Si SnoozeCount > 1, reconoce la demora de forma natural: "Sé que ha pasado tiempo..." o "He estado a mil, pero...".
+
+      #### 2. MODO ESTRATEGIA (Diferenciación de Planes)
+      - **Si Plan == GUEST/FREEMIUM:**
+          - Genera un mensaje estándar, correcto pero breve.
+          - **IMPORTANTE:** Al final del mensaje, añade un bloque llamado GUARDIAN_INSIGHT. Redacta un consejo breve y directo. EVITA CLICHÉS como "nutrir el corazón", "reforzar el amor" o "lazos auténticos". En lugar de lenguaje de marketing ("Te ofrecemos una estrategia..."), usa un tono de valor: "Tengo una idea para...". Menciona sutilmente elementos del contexto local (ej. la brisa, un café, el ambiente) para generar curiosidad, sin nombrar la ciudad explícitamente. No des el mensaje premium, solo sugiere la idea.
+
+      - **Si Plan == PREMIUM:**
+          - **ADN Regional:** Si Region es Cartagena o Barranquilla (o detectado en RegionalContext), inyecta carisma caribeño sofisticado. Usa modismos con elegancia.
+          - **Estrategia de Regalo:** Si la Occasion es importante (Boda, Cumpleaños, Ascenso), sugiere un regalo específico basado en la cultura local (ej. Dulces del Portal, una experiencia en las Murallas, o un café premium).
+          - **Análisis Psicológico:** Explica brevemente por qué elegiste ese tono específico para este contacto.
+
+      ### CONSTRAINTS
+      - Prohibido sonar robótico.
+      - Prohibido cortar frases (Max 500 tokens).
+      - En Plan Premium, la prioridad es la "Alta Conversión Emocional".
+
       ${aiConfig.prompt_style || "Actúa como un asistente de mensajería."} 
       ${aiConfig.length_instruction || ""}
-      STRICT_RULES:
-      - Plan GUEST: Breve, sin emojis, respuesta directa.
-      - Plan FREEMIUM: Empático, 1 emoji, tono conversacional.
-      - Plan PREMIUM: Análisis psicológico, estructura elegante, copywriting de alta conversión.
-      - Variable Regional (Premium Only): Si el contexto menciona una ciudad específica (ej. Cartagena, Medellín, Bogotá), el sistema debe adoptar sutilmente el 'Modo Regional'. Esto implica: usar el ritmo local, mencionar referencias icónicas si encajan y aplicar un lenguaje que genere cercanía inmediata según la cultura de la ciudad, pero manteniendo la sofisticación del Plan Premium.
     `.trim();
 
     const model = genAI.getGenerativeModel({
