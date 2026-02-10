@@ -34,81 +34,85 @@ const getUser = async (req, res, next) => {
 };
 
 router.post("/generate", getUser, async (req, res) => {
-  const { contactId, occasion, tone } = req.body;
+  // CORRECCIÓN: Extraer todas las variables necesarias de req.body
+  const { 
+    contactId, 
+    occasion, 
+    tone, 
+    contextWords, // <-- Faltaba extraer esto
+    receivedText, 
+    formatInstruction 
+  } = req.body;
+  
   const user = req.user;
 
   try {
-    // 1. Validar acceso (Centralizado en el servicio)
-    // Lanza error con upsell si falla alguna validación
+    // 1. Validar acceso - Ahora contextWords existe
     PlanService.validateAccess(user, { occasion, tone, contextWords });
 
-    // 2. Obtener configuración base de IA para este plan
     const aiConfig = PlanService.getAIConfig(user.planLevel);
 
-    // 3. Contexto del Guardián (Uso de Embeddings - 1000 RPD)
+    // 3. Contexto del Guardián
     let guardianContext = { relationalHealth: 5, snoozeCount: 0 };
-    if (contactId) {
+    if (contactId && user._id) { // <-- Validación de seguridad para invitados
       const context = await GuardianService.getContext(user._id, contactId);
       guardianContext = { ...guardianContext, ...context };
     }
 
-    // 4. ORQUESTADOR: Definir estrategia (Selección inteligente entre Gemini 3, 2.5 y Lite)
+    // 4. Orquestador
     const strategy = await AIOrchestrator.getRequestStrategy(
       user.planLevel,
-      guardianContext.relationalHealth,
+      guardianContext.relationalHealth
     );
 
-    // Delay para Guest (Incentivo de Conversión)
     if (strategy.delay > 0) {
       await new Promise((resolve) => setTimeout(resolve, strategy.delay));
     }
 
     const generationData = {
-      ...req.body,
+      ...req.body, // Incluye contextWords, tone, etc.
       planLevel: user.planLevel,
       relationalHealth: guardianContext.relationalHealth,
       neutralMode: user.preferences?.neutralMode,
-      modelOverride: strategy.model, // Modelo inicial (ej: Gemini 3 Flash - 20 RPD)
+      modelOverride: strategy.model,
     };
 
-    // 5. EJECUCIÓN CON RECURSIVIDAD DE SEGURIDAD (Fallback en Cascada)
+    // 5. Ejecución con Fallback
     let generatedText;
     try {
       generatedText = await AIService.generate(aiConfig, generationData);
     } catch (error) {
-      // Si falla por cuota (429), el Orquestador ahora provee el siguiente mejor modelo disponible
-      // Esto nos permite agotar los 60 créditos de la familia Gemini
       if (error.statusCode === 429 || error.message.includes("quota")) {
-        logger.warn(
-          `Cuota agotada para ${strategy.model}. Buscando modelo de respaldo...`,
-        );
-
-        // Intentamos el "Tanque Masivo" (Gemma 3 - 14.4K RPD) como fallback final
+        logger.warn(`Fallback activo para ${strategy.model}`);
         generationData.modelOverride = AIOrchestrator.MODELS.PREMIUM_EFFICIENT;
         generatedText = await AIService.generate(aiConfig, generationData);
       } else {
         throw error;
       }
     }
-    // 6. POST-PROCESAMIENTO
-    await Promise.all([
+
+    // 6. Post-procesamiento (Sin await para no bloquear la respuesta)
+    // El .catch es vital aquí para que un error en BD no mate la respuesta del usuario
+    Promise.all([
       user.incrementUsage(),
-      contactId
+      (contactId && user._id) 
         ? GuardianService.recordInteraction(user._id, contactId, {
             content: generatedText,
-            ...req.body,
+            occasion,
+            tone,
+            ...req.body
           })
         : Promise.resolve(),
-    ]);
+    ]).catch(err => logger.error("Error en post-procesamiento", err));
 
-    // 7. RESPUESTA CON METADATOS
+    // 7. Respuesta
     const planMetadata = PlanService.getPlanMetadata(user.planLevel);
     res.json({
       result: generatedText,
       monetization: planMetadata.monetization,
-      remaining_credits:
-        planMetadata.access.daily_limit - user.usage.generationsCount,
+      remaining_credits: planMetadata.access.daily_limit - (user.usage?.generationsCount || 0),
     });
+
   } catch (err) {
     if (err.statusCode) {
       return res.status(err.statusCode).json({
@@ -116,7 +120,7 @@ router.post("/generate", getUser, async (req, res) => {
         upsell: err.upsell,
       });
     }
-    logger.error("Error en la generación de magia", { error: err });
+    logger.error("Error en la generación de magia", { error: err.message });
     res.status(500).json({ error: "Error en la magia" });
   }
 });
