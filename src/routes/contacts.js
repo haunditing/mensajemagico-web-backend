@@ -7,7 +7,7 @@ const authenticate = require("../middleware/auth");
 router.get("/", authenticate, async (req, res) => {
   try {
     const contacts = await Contact.find({ userId: req.userId }).sort({
-      lastInteraction: -1,
+      relationalHealth: 1,
     });
     res.json(contacts);
   } catch (error) {
@@ -34,11 +34,25 @@ router.get("/:id", authenticate, async (req, res) => {
 router.post("/", authenticate, async (req, res) => {
   try {
     const { name, relationship } = req.body;
+
+    if (!name || name.trim() === "") {
+      return res.status(400).json({ error: "El nombre es obligatorio." });
+    }
+
+    // 1. Validar que no exista un contacto con el mismo nombre para este usuario
+    const existing = await Contact.findOne({ userId: req.userId, name });
+    if (existing) {
+      return res
+        .status(400)
+        .json({ error: "Ya tienes un contacto con ese nombre." });
+    }
+
     const contact = new Contact({
       userId: req.userId,
       name,
       relationship,
       relationalHealth: 5, // Valor inicial neutro
+      lastInteraction: new Date(),
     });
     await contact.save();
     res.status(201).json(contact);

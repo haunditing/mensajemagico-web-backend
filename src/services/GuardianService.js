@@ -140,8 +140,13 @@ const recordInteraction = async (
       const posSim = cosineSimilarity(msgVector, anchors.positive);
       const negSim = cosineSimilarity(msgVector, anchors.negative);
 
-      // Si el mensaje es positivo, el bonus escala con la similitud
-      healthBonus = posSim > negSim ? posSim * 0.5 : posSim * 0.1;
+      // Si la similitud positiva no supera un umbral alto (ej. 0.8), el bono debe ser menor.
+      if (posSim > negSim) {
+        // Solo dar un bono alto (> 0.3) si el mensaje es verdaderamente cálido
+        healthBonus = posSim > 0.8 ? posSim * 0.5 : posSim * 0.1;
+      } else {
+        healthBonus = 0.05; // Mensajes neutros o fríos
+      }
     }
 
     // Actualizar contacto
