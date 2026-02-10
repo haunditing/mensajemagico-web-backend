@@ -18,32 +18,32 @@ router.post("/create_preference", async (req, res) => {
     if (!user) return res.status(404).json({ error: "Usuario no encontrado" });
 
     const premiumConfig = PLAN_CONFIG.subscription_plans.premium;
-    let price,
-      title,
-      currency_id,
-      frequency = 1;
+    let price, title;
+    const currency_id = "COP"; // Forzamos COP para evitar el error de MP,
+    const TRM = 3980; // Define una tasa de cambio fija (ej. 1 USD = 3980 COP)
+    frequency = 1;
 
-    // 1. Lógica de Precios y Localización
     if (country === "CO") {
-      currency_id = "COP";
+      // --- CONCEPTO A: USUARIO LOCAL ---
       if (planId === "premium_yearly") {
         price = premiumConfig.pricing_hooks.mercadopago_price_yearly;
         title = "Suscripción Anual - MensajeMágico Premium";
-        frequency = 12;
       } else {
         price = premiumConfig.pricing_hooks.mercadopago_price_monthly;
         title = "Suscripción Mensual - MensajeMágico Premium";
       }
     } else {
-      currency_id = "USD";
-      if (planId === "premium_yearly") {
-        price = premiumConfig.pricing_hooks.mercadopago_price_yearly_usd;
-        title = "Suscripción Anual - MensajeMágico Premium";
-        frequency = 12;
-      } else {
-        price = premiumConfig.pricing_hooks.mercadopago_price_monthly_usd;
-        title = "Suscripción Mensual - MensajeMágico Premium";
-      }
+      // --- CONCEPTO B: USUARIO INTERNACIONAL (Disfraz de USD a COP) ---
+      // Convertimos el precio de USD a COP para que Mercado Pago lo procese
+      const priceInUsd =
+        planId === "premium_yearly"
+          ? premiumConfig.pricing_hooks.mercadopago_price_yearly_usd
+          : premiumConfig.pricing_hooks.mercadopago_price_monthly_usd;
+
+      price = priceInUsd * TRM;
+
+      // La leyenda estratégica:
+      title = `Plan Premium Internacional (Equivalente a $${priceInUsd} USD)`;
     }
 
     // 2. Crear Suscripción en Mercado Pago
