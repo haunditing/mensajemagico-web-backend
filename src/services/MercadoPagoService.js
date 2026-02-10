@@ -1,9 +1,18 @@
-const { MercadoPagoConfig, Preference, Payment, PreApproval } = require("mercadopago");
+const {
+  MercadoPagoConfig,
+  Preference,
+  Payment,
+  PreApproval,
+} = require("mercadopago");
 
-// Inicializar cliente con el Access Token
-// Asegúrate de tener MP_ACCESS_TOKEN en tus variables de entorno
+// 1. Inicializar cliente con Timeout configurado
+// Aumentamos a 30 segundos (30000ms) para dar margen a las suscripciones
 const client = new MercadoPagoConfig({
   accessToken: process.env.MP_ACCESS_TOKEN,
+  options: {
+    timeout: 30000, // Solución al error de Timeout
+    idempotencyKey: "mensajemagico_sub_key", // Opcional: Ayuda a evitar cargos duplicados
+  },
 });
 
 const createPreference = async ({
@@ -74,6 +83,7 @@ const createSubscription = async ({
 }) => {
   const preApproval = new PreApproval(client);
 
+  // Las suscripciones (PreApproval) suelen tardar más en procesarse en los servidores de MP
   return await preApproval.create({
     body: {
       reason: title,
