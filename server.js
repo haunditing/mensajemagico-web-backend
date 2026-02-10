@@ -10,6 +10,8 @@ const configRoutes = require("./src/routes/config");
 const favoritesRoutes = require("./src/routes/favorites");
 const wompiRoutes = require("./src/routes/wompi");
 const mercadopagoRoutes = require("./src/routes/mercadopago");
+const remindersRoutes = require("./src/routes/reminders");
+const { initScheduledJobs } = require("./src/services/SchedulerService");
 
 const logger = require("./src/utils/logger");
 
@@ -20,6 +22,9 @@ mongoose
   .connect(process.env.MONGO_URI)
   .then(() => logger.info("MongoDB Conectado"))
   .catch((err) => logger.error("Error Mongo:", { error: err }));
+
+// Iniciar el motor de automatización
+initScheduledJobs();
 
 // Middleware
 app.use(cors());
@@ -49,6 +54,7 @@ app.use("/api/config", configRoutes);
 app.use("/api/favorites", favoritesRoutes);
 app.use("/api", wompiRoutes); // Montamos en /api para que quede /api/webhooks/wompi
 app.use("/api/mercadopago", mercadopagoRoutes);
+app.use("/api/reminders", remindersRoutes);
 
 // Manejo de errores global
 app.use((err, req, res, next) => {

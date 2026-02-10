@@ -18,6 +18,7 @@ const UserSchema = new mongoose.Schema({
   location: { type: String },
   preferences: {
     neutralMode: { type: Boolean, default: false },
+    notificationsEnabled: { type: Boolean, default: true },
   },
 
   // Control de uso

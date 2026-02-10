@@ -244,7 +244,7 @@ router.post("/reset-password/:token", authLimiter, async (req, res) => {
 // 6. Actualizar Perfil (Ubicación manual)
 router.put("/profile", authenticate, async (req, res) => {
   try {
-    const { location, neutralMode } = req.body;
+    const { location, neutralMode, notificationsEnabled } = req.body;
     const user = await User.findById(req.userId);
 
     if (!user) {
@@ -272,6 +272,12 @@ router.put("/profile", authenticate, async (req, res) => {
     if (neutralMode !== undefined) {
       if (!user.preferences) user.preferences = {};
       user.preferences.neutralMode = neutralMode;
+    }
+
+    // Actualizar preferencia de Notificaciones
+    if (notificationsEnabled !== undefined) {
+      if (!user.preferences) user.preferences = {};
+      user.preferences.notificationsEnabled = notificationsEnabled;
     }
 
     await user.save();
