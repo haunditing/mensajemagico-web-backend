@@ -180,6 +180,7 @@ const getContext = async (userId, contactId) => {
       snoozeCount: contact.snoozeCount,
       lastInteraction: contact.lastInteraction,
       lastUserStyle: contact.guardianMetadata?.lastUserStyle,
+      preferredLexicon: contact.guardianMetadata?.preferredLexicon || [],
     };
   } catch (error) {
     logger.error("Error en getContext del Guardián", { error });

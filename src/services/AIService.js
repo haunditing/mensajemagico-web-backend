@@ -24,6 +24,7 @@ const generate = async (aiConfig, data) => {
     relationalHealth = 5,
     modelOverride,
     lastUserStyle, // Recibimos el estilo aprendido
+    preferredLexicon, // Recibimos el ADN Léxico
     grammaticalGender,
   } = data;
 
@@ -66,6 +67,7 @@ const generate = async (aiConfig, data) => {
   ### HISTORIAL DE EDICIÓN DEL USUARIO
   - **Género Gramatical del Usuario:** ${grammaticalGender || "neutral"}. Usa esto para la concordancia (ej. 'cansado' vs 'cansada'). No influye en la personalidad.
   ${lastUserStyle ? `Estilo preferido del usuario para este contacto: "${lastUserStyle}". IMITA este estilo (palabras, longitud, uso de emojis).` : "No hay datos de estilo previos."}
+  ${preferredLexicon && preferredLexicon.length > 0 ? `ADN Léxico (Palabras clave del usuario): ${preferredLexicon.join(", ")}. Úsalas si encajan naturalmente en el mensaje.` : ""}
 
   ### MODOS DE OPERACIÓN SEGÚN PLAN
   - **PLAN GUEST/FREEMIUM:** Mensaje breve (max 2 párrafos) + un "GUARDIAN_INSIGHT" (un consejo psicológico breve sobre por qué este mensaje ayuda a la relación).

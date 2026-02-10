@@ -79,8 +79,9 @@ router.post("/generate", getUser, async (req, res) => {
           neutralMode: user.preferences?.neutralMode,
           modelOverride: selectedModel,
           grammaticalGender: user.preferences?.grammaticalGender,
-          // Inyectamos el aprendizaje del usuario si existe
-          guardianMetadata: guardianContext.guardianMetadata,
+          // Inyectamos el aprendizaje del usuario
+          lastUserStyle: guardianContext.lastUserStyle,
+          preferredLexicon: guardianContext.preferredLexicon,
         };
 
         return await AIService.generate(aiConfig, generationData);
