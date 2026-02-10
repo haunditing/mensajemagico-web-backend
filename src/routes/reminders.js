@@ -31,7 +31,7 @@ const requirePremium = async (req, res, next) => {
 router.get("/", authenticate, requirePremium, async (req, res) => {
   try {
     // 1. Obtener recordatorios personalizados de la DB
-    const customReminders = await Reminder.find({ userId: req.userId });
+    const customReminders = await Reminder.find({ userId: req.userId, isArchived: { $ne: true } });
 
     // 3. Procesar personalizados para calcular próxima ocurrencia
     const today = new Date();
@@ -229,6 +229,38 @@ router.post("/:id/snooze", authenticate, requirePremium, async (req, res) => {
   } catch (error) {
     logger.error("Error posponiendo recordatorio", { error });
     res.status(500).json({ error: "Error al posponer" });
+  }
+});
+
+// POST /api/reminders/:id/complete - Completar recordatorio
+router.post("/:id/complete", authenticate, requirePremium, async (req, res) => {
+  try {
+    const reminder = await Reminder.findOne({ _id: req.params.id, userId: req.userId });
+
+    if (!reminder) {
+      return res.status(404).json({ error: "Recordatorio no encontrado" });
+    }
+
+    if (reminder.isRecurring) {
+      // Si es recurrente, mover al futuro
+      const now = new Date();
+      let nextDate = new Date(reminder.nextOccurrence || reminder.date);
+      
+      // Asegurar que la nueva fecha sea en el futuro (por si tenía varios años de retraso)
+      while (nextDate < now) {
+        nextDate.setFullYear(nextDate.getFullYear() + 1);
+      }
+      reminder.nextOccurrence = nextDate;
+    } else {
+      // Si no es recurrente, archivar
+      reminder.isArchived = true;
+    }
+
+    await reminder.save();
+    res.json(reminder);
+  } catch (error) {
+    logger.error("Error completando recordatorio", { error });
+    res.status(500).json({ error: "Error al completar" });
   }
 });
 

@@ -15,6 +15,7 @@ const ReminderSchema = new mongoose.Schema({
   notes: { type: String },
   notificationTime: { type: String, default: "09:00" }, // Hora formato HH:MM
   socialPlatform: { type: String }, // Plataforma objetivo (ej: 'WhatsApp', 'Instagram')
+  isArchived: { type: Boolean, default: false }, // Para recordatorios completados no recurrentes
   createdAt: { type: Date, default: Date.now },
 });
 

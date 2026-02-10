@@ -5,6 +5,7 @@ const PlanService = require("../services/PlanService");
 const AIService = require("../services/AIService");
 const logger = require("../utils/logger");
 const GuardianService = require("../services/GuardianService");
+const AIOrchestrator = require("../services/AIOrchestrator");
 
 // Middleware simulado para obtener usuario
 const getUser = async (req, res, next) => {
@@ -33,18 +34,7 @@ const getUser = async (req, res, next) => {
 };
 
 router.post("/generate", getUser, async (req, res) => {
-  const {
-    occasion,
-    tone,
-    contextWords,
-    relationship,
-    receivedText,
-    formatInstruction,
-    userLocation, // Recibimos la ubicación (puede venir del frontend o un middleware de IP)
-    snoozeCount,
-    relationalHealth,
-    contactId,
-  } = req.body;
+  const { contactId, occasion, tone } = req.body;
   const user = req.user;
 
   try {
@@ -52,48 +42,66 @@ router.post("/generate", getUser, async (req, res) => {
     // Lanza error con upsell si falla alguna validación
     PlanService.validateAccess(user, { occasion, tone, contextWords });
 
-    // 2. Obtener configuración de IA para este plan
+    // 2. Obtener configuración base de IA para este plan
     const aiConfig = PlanService.getAIConfig(user.planLevel);
 
-    // 2.5 Lógica del Guardián: Obtener contexto de la relación
-    let guardianContext = {
-      snoozeCount: snoozeCount || 0,
-      relationalHealth: relationalHealth || 5,
-    };
-
+    // 3. Contexto del Guardián (Uso de Embeddings - 1000 RPD)
+    let guardianContext = { relationalHealth: 5, snoozeCount: 0 };
     if (contactId) {
       const context = await GuardianService.getContext(user._id, contactId);
       guardianContext = { ...guardianContext, ...context };
     }
 
-    // 3. Llamada al servicio de IA
-    const generatedText = await AIService.generate(aiConfig, {
-      occasion,
-      tone,
-      contextWords,
-      relationship,
-      receivedText,
-      formatInstruction,
-      userLocation,
-      planLevel: user.planLevel, // Pasamos el nivel de plan para la lógica condicional
-      neutralMode: user.preferences?.neutralMode, // Preferencia de modo neutro
-      snoozeCount: guardianContext.snoozeCount,
-      relationalHealth: guardianContext.relationalHealth,
-    });
+    // 4. ORQUESTADOR: Definir estrategia (Selección inteligente entre Gemini 3, 2.5 y Lite)
+    const strategy = await AIOrchestrator.getRequestStrategy(
+      user.planLevel,
+      guardianContext.relationalHealth,
+    );
 
-    // 4. Incrementar uso
-    await user.incrementUsage();
-
-    // 4.5 Guardar historial en el Guardián (Si hay un contacto asociado)
-    if (contactId) {
-      await GuardianService.recordInteraction(user._id, contactId, {
-        occasion,
-        tone,
-        content: generatedText
-      });
+    // Delay para Guest (Incentivo de Conversión)
+    if (strategy.delay > 0) {
+      await new Promise((resolve) => setTimeout(resolve, strategy.delay));
     }
 
-    // 5. Respuesta final
+    const generationData = {
+      ...req.body,
+      planLevel: user.planLevel,
+      relationalHealth: guardianContext.relationalHealth,
+      neutralMode: user.preferences?.neutralMode,
+      modelOverride: strategy.model, // Modelo inicial (ej: Gemini 3 Flash - 20 RPD)
+    };
+
+    // 5. EJECUCIÓN CON RECURSIVIDAD DE SEGURIDAD (Fallback en Cascada)
+    let generatedText;
+    try {
+      generatedText = await AIService.generate(aiConfig, generationData);
+    } catch (error) {
+      // Si falla por cuota (429), el Orquestador ahora provee el siguiente mejor modelo disponible
+      // Esto nos permite agotar los 60 créditos de la familia Gemini
+      if (error.statusCode === 429 || error.message.includes("quota")) {
+        logger.warn(
+          `Cuota agotada para ${strategy.model}. Buscando modelo de respaldo...`,
+        );
+
+        // Intentamos el "Tanque Masivo" (Gemma 3 - 14.4K RPD) como fallback final
+        generationData.modelOverride = AIOrchestrator.MODELS.PREMIUM_EFFICIENT;
+        generatedText = await AIService.generate(aiConfig, generationData);
+      } else {
+        throw error;
+      }
+    }
+    // 6. POST-PROCESAMIENTO
+    await Promise.all([
+      user.incrementUsage(),
+      contactId
+        ? GuardianService.recordInteraction(user._id, contactId, {
+            content: generatedText,
+            ...req.body,
+          })
+        : Promise.resolve(),
+    ]);
+
+    // 7. RESPUESTA CON METADATOS
     const planMetadata = PlanService.getPlanMetadata(user.planLevel);
     res.json({
       result: generatedText,

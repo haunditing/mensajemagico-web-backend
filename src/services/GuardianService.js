@@ -4,13 +4,15 @@ const { GoogleGenerativeAI } = require("@google/generative-ai");
 
 // Inicializar Google AI
 if (!process.env.AI_API_KEY) {
-  logger.warn("GuardianService: AI_API_KEY no está definida. El análisis de sentimientos no funcionará.");
+  logger.warn(
+    "GuardianService: AI_API_KEY no está definida. El análisis de sentimientos no funcionará.",
+  );
 }
 
 const genAI = new GoogleGenerativeAI(process.env.AI_API_KEY);
 // Usamos text-embedding-004 que tiene 100 RPM según tu cuota
 const embeddingModel = genAI.getGenerativeModel({
-  model: "text-embedding-004",
+  model: "gemini-embedding-001",
 });
 
 // Cache para los polos semánticos
