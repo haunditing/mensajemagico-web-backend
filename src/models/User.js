@@ -19,6 +19,11 @@ const UserSchema = new mongoose.Schema({
   preferences: {
     neutralMode: { type: Boolean, default: false },
     notificationsEnabled: { type: Boolean, default: true },
+    grammaticalGender: {
+      type: String,
+      enum: ["male", "female", "neutral"],
+      default: "neutral",
+    },
   },
 
   // Control de uso

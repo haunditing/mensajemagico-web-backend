@@ -13,6 +13,7 @@ const mercadopagoRoutes = require("./src/routes/mercadopago");
 const remindersRoutes = require("./src/routes/reminders");
 const { initScheduledJobs } = require("./src/services/SchedulerService");
 const contactsRoutes = require("./src/routes/contacts");
+const guardianRoutes = require("./src/routes/guardian");
 
 const logger = require("./src/utils/logger");
 
@@ -57,6 +58,7 @@ app.use("/api", wompiRoutes); // Montamos en /api para que quede /api/webhooks/w
 app.use("/api/mercadopago", mercadopagoRoutes);
 app.use("/api/reminders", remindersRoutes);
 app.use("/api/contacts", contactsRoutes);
+app.use("/api/guardian", guardianRoutes);
 
 // Manejo de errores global
 app.use((err, req, res, next) => {

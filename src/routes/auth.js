@@ -244,7 +244,7 @@ router.post("/reset-password/:token", authLimiter, async (req, res) => {
 // 6. Actualizar Perfil (Ubicación manual)
 router.put("/profile", authenticate, async (req, res) => {
   try {
-    const { location, neutralMode, notificationsEnabled } = req.body;
+    const { location, neutralMode, notificationsEnabled, grammaticalGender } = req.body;
     const user = await User.findById(req.userId);
 
     if (!user) {
@@ -278,6 +278,12 @@ router.put("/profile", authenticate, async (req, res) => {
     if (notificationsEnabled !== undefined) {
       if (!user.preferences) user.preferences = {};
       user.preferences.notificationsEnabled = notificationsEnabled;
+    }
+
+    // Actualizar preferencia de Género Gramatical
+    if (grammaticalGender && ["male", "female", "neutral"].includes(grammaticalGender)) {
+      if (!user.preferences) user.preferences = {};
+      user.preferences.grammaticalGender = grammaticalGender;
     }
 
     await user.save();

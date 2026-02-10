@@ -35,15 +35,15 @@ const getUser = async (req, res, next) => {
 
 router.post("/generate", getUser, async (req, res) => {
   // CORRECCIÓN: Extraer todas las variables necesarias de req.body
-  const { 
-    contactId, 
-    occasion, 
-    tone, 
+  const {
+    contactId,
+    occasion,
+    tone,
     contextWords, // <-- Faltaba extraer esto
-    receivedText, 
-    formatInstruction 
+    receivedText,
+    formatInstruction,
   } = req.body;
-  
+
   const user = req.user;
 
   try {
@@ -53,66 +53,62 @@ router.post("/generate", getUser, async (req, res) => {
     const aiConfig = PlanService.getAIConfig(user.planLevel);
 
     // 3. Contexto del Guardián
-    let guardianContext = { relationalHealth: 5, snoozeCount: 0 };
-    if (contactId && user._id) { // <-- Validación de seguridad para invitados
+    let guardianContext = {
+      relationalHealth: 5,
+      snoozeCount: 0,
+      guardianMetadata: null,
+    };
+    if (contactId && user._id) {
+      // <-- Validación de seguridad para invitados
       const context = await GuardianService.getContext(user._id, contactId);
       guardianContext = { ...guardianContext, ...context };
     }
 
-    // 4. Orquestador
-    const strategy = await AIOrchestrator.getRequestStrategy(
+    // 3. Ejecución Resiliente con el Orquestador
+    // El orquestador ahora maneja internamente el delay y los reintentos (503)
+    const generatedText = await AIOrchestrator.executeWithFallback(
       user.planLevel,
-      guardianContext.relationalHealth
+      guardianContext.relationalHealth,
+      async (selectedModel) => {
+        // Configuramos la data para la IA incluyendo los nuevos metadatos de aprendizaje
+        const generationData = {
+          ...req.body,
+          planLevel: user.planLevel,
+          relationalHealth: guardianContext.relationalHealth,
+          snoozeCount: guardianContext.snoozeCount,
+          neutralMode: user.preferences?.neutralMode,
+          modelOverride: selectedModel,
+          grammaticalGender: user.preferences?.grammaticalGender,
+          // Inyectamos el aprendizaje del usuario si existe
+          guardianMetadata: guardianContext.guardianMetadata,
+        };
+
+        return await AIService.generate(aiConfig, generationData);
+      },
     );
 
-    if (strategy.delay > 0) {
-      await new Promise((resolve) => setTimeout(resolve, strategy.delay));
-    }
-
-    const generationData = {
-      ...req.body, // Incluye contextWords, tone, etc.
-      planLevel: user.planLevel,
-      relationalHealth: guardianContext.relationalHealth,
-      neutralMode: user.preferences?.neutralMode,
-      modelOverride: strategy.model,
-    };
-
-    // 5. Ejecución con Fallback
-    let generatedText;
-    try {
-      generatedText = await AIService.generate(aiConfig, generationData);
-    } catch (error) {
-      if (error.statusCode === 429 || error.message.includes("quota")) {
-        logger.warn(`Fallback activo para ${strategy.model}`);
-        generationData.modelOverride = AIOrchestrator.MODELS.PREMIUM_EFFICIENT;
-        generatedText = await AIService.generate(aiConfig, generationData);
-      } else {
-        throw error;
-      }
-    }
-
-    // 6. Post-procesamiento (Sin await para no bloquear la respuesta)
+    // 4. Post-procesamiento (Sin await para no bloquear la respuesta)
     // El .catch es vital aquí para que un error en BD no mate la respuesta del usuario
     Promise.all([
       user.incrementUsage(),
-      (contactId && user._id) 
+      contactId && user._id
         ? GuardianService.recordInteraction(user._id, contactId, {
             content: generatedText,
             occasion,
             tone,
-            ...req.body
+            ...req.body,
           })
         : Promise.resolve(),
-    ]).catch(err => logger.error("Error en post-procesamiento", err));
+    ]).catch((err) => logger.error("Error en post-procesamiento", err));
 
     // 7. Respuesta
     const planMetadata = PlanService.getPlanMetadata(user.planLevel);
     res.json({
       result: generatedText,
       monetization: planMetadata.monetization,
-      remaining_credits: planMetadata.access.daily_limit - (user.usage?.generationsCount || 0),
+      remaining_credits:
+        planMetadata.access.daily_limit - (user.usage?.generationsCount || 0),
     });
-
   } catch (err) {
     if (err.statusCode) {
       return res.status(err.statusCode).json({

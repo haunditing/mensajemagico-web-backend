@@ -83,6 +83,78 @@ const extractMessageContent = (content) => {
 };
 
 /**
+ * Analiza el sentimiento de un texto usando Embeddings.
+ * Devuelve un puntaje de "salud" (bonus/malus).
+ */
+const analyzeSentiment = async (text) => {
+  const cleanText = extractMessageContent(text);
+  const anchors = await getAnchors();
+  let healthBonus = 0.1; // Base
+
+  if (anchors && cleanText && cleanText.trim().length > 0) {
+    try {
+      const res = await embeddingModel.embedContent(cleanText);
+      const msgVector = res.embedding.values;
+
+      const posSim = cosineSimilarity(msgVector, anchors.positive);
+      const negSim = cosineSimilarity(msgVector, anchors.negative);
+
+      if (posSim > negSim) {
+        healthBonus = posSim > 0.8 ? posSim * 0.5 : posSim * 0.1;
+      } else {
+        healthBonus = 0.05;
+      }
+    } catch (error) {
+      logger.warn("Error en análisis de sentimiento", { error: error.message });
+    }
+  }
+  return healthBonus;
+};
+
+const extractStyle = (text) => {
+  // Por ahora, usamos el texto editado como "few-shot example" para la IA.
+  // Limitamos a 200 caracteres para no saturar el contexto.
+  return text ? text.substring(0, 200) : "";
+};
+
+// Cálculo de distancia de Levenshtein para medir fricción
+const calculateFriction = (original, edited) => {
+  if (!original || !edited) return 100;
+  const a = original.trim();
+  const b = edited.trim();
+  const matrix = [];
+
+  for (let i = 0; i <= b.length; i++) matrix[i] = [i];
+  for (let j = 0; j <= a.length; j++) matrix[0][j] = j;
+
+  for (let i = 1; i <= b.length; i++) {
+    for (let j = 1; j <= a.length; j++) {
+      if (b.charAt(i - 1) === a.charAt(j - 1)) {
+        matrix[i][j] = matrix[i - 1][j - 1];
+      } else {
+        matrix[i][j] = Math.min(
+          matrix[i - 1][j - 1] + 1,
+          Math.min(matrix[i][j - 1] + 1, matrix[i - 1][j] + 1)
+        );
+      }
+    }
+  }
+  
+  const distance = matrix[b.length][a.length];
+  const maxLength = Math.max(a.length, b.length);
+  return Math.round((distance / maxLength) * 100);
+};
+
+// Extracción de ADN Léxico (Palabras nuevas que no estaban en el original)
+const extractLexicalDNA = (original, edited) => {
+  const clean = (text) => text.toLowerCase().replace(/[^\w\sáéíóúñ]/gi, '').split(/\s+/);
+  const originalSet = new Set(clean(original));
+  const editedArr = clean(edited);
+  // Filtramos palabras cortas (conectores) y devolvemos solo las nuevas
+  return [...new Set(editedArr.filter(w => !originalSet.has(w) && w.length > 3))];
+};
+
+/**
  * OBTIENE EL CONTEXTO: Incluye lógica de decaimiento temporal.
  * Si ha pasado mucho tiempo, la salud baja automáticamente.
  */
@@ -107,6 +179,7 @@ const getContext = async (userId, contactId) => {
       relationalHealth: Number(contact.relationalHealth.toFixed(2)),
       snoozeCount: contact.snoozeCount,
       lastInteraction: contact.lastInteraction,
+      lastUserStyle: contact.guardianMetadata?.lastUserStyle,
     };
   } catch (error) {
     logger.error("Error en getContext del Guardián", { error });
@@ -128,26 +201,7 @@ const recordInteraction = async (
     const contact = await Contact.findOne({ _id: contactId, userId });
     if (!contact) return;
 
-    const cleanText = extractMessageContent(content);
-    const anchors = await getAnchors();
-    let healthBonus = 0.1; // Bonus mínimo por el intento
-
-    // Análisis Semántico con Embeddings
-    if (anchors && cleanText && cleanText.trim().length > 0) {
-      const res = await embeddingModel.embedContent(cleanText);
-      const msgVector = res.embedding.values;
-
-      const posSim = cosineSimilarity(msgVector, anchors.positive);
-      const negSim = cosineSimilarity(msgVector, anchors.negative);
-
-      // Si la similitud positiva no supera un umbral alto (ej. 0.8), el bono debe ser menor.
-      if (posSim > negSim) {
-        // Solo dar un bono alto (> 0.3) si el mensaje es verdaderamente cálido
-        healthBonus = posSim > 0.8 ? posSim * 0.5 : posSim * 0.1;
-      } else {
-        healthBonus = 0.05; // Mensajes neutros o fríos
-      }
-    }
+    const healthBonus = await analyzeSentiment(content);
 
     // Actualizar contacto
     contact.history.push({
@@ -177,4 +231,4 @@ const recordInteraction = async (
   }
 };
 
-module.exports = { getContext, recordInteraction };
+module.exports = { getContext, recordInteraction, analyzeSentiment, extractStyle, calculateFriction, extractLexicalDNA };

@@ -23,6 +23,8 @@ const generate = async (aiConfig, data) => {
     snoozeCount = 0,
     relationalHealth = 5,
     modelOverride,
+    lastUserStyle, // Recibimos el estilo aprendido
+    grammaticalGender,
   } = data;
 
   // 1. GESTIÓN DE CACHÉ
@@ -54,11 +56,16 @@ const generate = async (aiConfig, data) => {
   2. **IDENTIDAD SENSORIAL:** Expresa la región a través del clima (brisa, calorcito, frío), el ritmo de vida o jerga sutil y orgánica (ej. para la Costa: "ajá", "bacán", "ya ni te acuerdas de uno").
   3. **FILTRO ANTI-ROBOT:** Si el mensaje parece un folleto de viajes o una escena de telenovela, descártalo y reintenta. Debe sonar como un mensaje de WhatsApp real.
 
+  ### CONTEXTO DEL USUARIO
   ### CONTEXTO DINÁMICO
   - **Salud Relacional:** ${relationalHealth}/10. 
     * Si es < 4: Tono de "Reparación". Sé vulnerable, evita el reclamo y no presiones.
     * Si es > 8: Tono de "Complicidad". Usa humor interno y confianza alta.
   - **SnoozeCount:** ${snoozeCount}. Si es > 1, admite la demora con honestidad (ej. "Me embolaté, pero aquí estoy").
+
+  ### HISTORIAL DE EDICIÓN DEL USUARIO
+  - **Género Gramatical del Usuario:** ${grammaticalGender || "neutral"}. Usa esto para la concordancia (ej. 'cansado' vs 'cansada'). No influye en la personalidad.
+  ${lastUserStyle ? `Estilo preferido del usuario para este contacto: "${lastUserStyle}". IMITA este estilo (palabras, longitud, uso de emojis).` : "No hay datos de estilo previos."}
 
   ### MODOS DE OPERACIÓN SEGÚN PLAN
   - **PLAN GUEST/FREEMIUM:** Mensaje breve (max 2 párrafos) + un "GUARDIAN_INSIGHT" (un consejo psicológico breve sobre por qué este mensaje ayuda a la relación).

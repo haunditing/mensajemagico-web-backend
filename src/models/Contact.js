@@ -15,6 +15,14 @@ const ContactSchema = new mongoose.Schema(
     relationalHealth: { type: Number, default: 5, min: 1, max: 10 }, // 1=Frío, 10=Íntimo
     snoozeCount: { type: Number, default: 0 }, // Veces que se ha pospuesto un recordatorio
 
+    // Metadatos de aprendizaje del Guardián
+    guardianMetadata: {
+      lastUserStyle: { type: String }, // Última edición del usuario (ej: "Hola mi bollito...")
+      preferredLexicon: [{ type: String }], // Palabras recurrentes (ADN Léxico)
+      editFrictionHistory: [{ type: Number }], // Historial de % de cambios (Fricción)
+      trained: { type: Boolean, default: false },
+    },
+
     lastInteraction: { type: Date },
 
     // Historial de mensajes generados
@@ -25,6 +33,8 @@ const ContactSchema = new mongoose.Schema(
         tone: String,
         content: String,
         sentimentScore: Number,
+        wasEdited: { type: Boolean, default: false },
+        originalContent: String,
       },
     ],
   },
