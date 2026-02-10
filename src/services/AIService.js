@@ -108,9 +108,16 @@ const generate = async (aiConfig, data) => {
       topK: 40,
     };
 
+    // 1. Definir settings relajados
     const safetySettings = [
-      { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_ONLY_HIGH" },
-      { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_ONLY_HIGH" },
+      {
+        category: "HARM_CATEGORY_HARASSMENT",
+        threshold: "BLOCK_ONLY_HIGH", // No bloquear en Medium (que es donde cae el romance)
+      },
+      {
+        category: "HARM_CATEGORY_HATE_SPEECH",
+        threshold: "BLOCK_ONLY_HIGH",
+      },
       {
         category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
         threshold: "BLOCK_ONLY_HIGH",
