@@ -35,7 +35,7 @@ const getUser = async (req, res, next) => {
 
 router.post("/generate", getUser, async (req, res) => {
   // CORRECCIÓN: Extraer todas las variables necesarias de req.body
-  const {
+  let {
     contactId,
     occasion,
     tone,
@@ -45,6 +45,11 @@ router.post("/generate", getUser, async (req, res) => {
   } = req.body;
 
   const user = req.user;
+
+  // Si contextWords es un array, lo convertimos a string para evitar errores de .trim() en PlanService
+  if (Array.isArray(contextWords)) {
+    contextWords = contextWords.join(", ");
+  }
 
   try {
     // 1. Validar acceso - Ahora contextWords existe
@@ -73,6 +78,7 @@ router.post("/generate", getUser, async (req, res) => {
         // Configuramos la data para la IA incluyendo los nuevos metadatos de aprendizaje
         const generationData = {
           ...req.body,
+          contextWords, // Usamos la versión saneada
           planLevel: user.planLevel,
           relationalHealth: guardianContext.relationalHealth,
           snoozeCount: guardianContext.snoozeCount,
@@ -98,6 +104,7 @@ router.post("/generate", getUser, async (req, res) => {
             occasion,
             tone,
             ...req.body,
+            contextWords, // Usamos la versión saneada
           })
         : Promise.resolve(),
     ]).catch((err) => logger.error("Error en post-procesamiento", err));

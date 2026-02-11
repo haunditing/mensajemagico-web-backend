@@ -16,6 +16,7 @@ const contactsRoutes = require("./src/routes/contacts");
 const guardianRoutes = require("./src/routes/guardian");
 
 const logger = require("./src/utils/logger");
+const requestLogger = require("./src/middleware/requestLogger");
 
 const app = express();
 
@@ -41,6 +42,7 @@ app.use((req, res, next) => {
   }
 });
 app.use("/api/payments/webhook", express.raw({ type: "application/json" }));
+app.use(requestLogger);
 
 // Logger de peticiones básico
 app.use((req, res, next) => {
