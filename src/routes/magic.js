@@ -33,7 +33,7 @@ const getUser = async (req, res, next) => {
   next();
 };
 
-router.post("/generate", getUser, async (req, res) => {
+router.post("/generate", getUser, async (req, res, next) => {
   // CORRECCIÓN: Extraer todas las variables necesarias de req.body
   let {
     contactId,
@@ -42,6 +42,8 @@ router.post("/generate", getUser, async (req, res) => {
     contextWords, // <-- Faltaba extraer esto
     receivedText,
     formatInstruction,
+    intention,
+    relationship,
   } = req.body;
 
   const user = req.user;
@@ -53,13 +55,18 @@ router.post("/generate", getUser, async (req, res) => {
 
   try {
     // 1. Validar acceso - Ahora contextWords existe
-    PlanService.validateAccess(user, { occasion, tone, contextWords });
+    PlanService.validateAccess(user, {
+      occasion,
+      tone,
+      contextWords,
+      intention,
+    });
 
     const aiConfig = PlanService.getAIConfig(user.planLevel);
 
     // 3. Contexto del Guardián
     let guardianContext = {
-      relationalHealth: 5,
+      relationalHealth: req.body.relationalHealth || 5, // Prioridad al dato del frontend si no hay contacto guardado
       snoozeCount: 0,
       guardianMetadata: null,
     };
@@ -84,7 +91,7 @@ router.post("/generate", getUser, async (req, res) => {
           snoozeCount: guardianContext.snoozeCount,
           neutralMode: user.preferences?.neutralMode,
           modelOverride: selectedModel,
-          grammaticalGender: user.preferences?.grammaticalGender,
+          grammaticalGender: user.preferences?.grammaticalGender || req.body.grammaticalGender, // Fallback para Guest
           // Inyectamos el aprendizaje del usuario
           lastUserStyle: guardianContext.lastUserStyle,
           preferredLexicon: guardianContext.preferredLexicon,
@@ -93,7 +100,26 @@ router.post("/generate", getUser, async (req, res) => {
         return await AIService.generate(aiConfig, generationData);
       },
     );
-
+    // 🚀 AGREGA EL LOG AQUÍ (Justo antes del post-procesamiento)
+    logger.info({
+      message: "Transacción IA: Generación Exitosa",
+      peticion: {
+        userId: user._id || "guest",
+        plan: user.planLevel,
+        input: {
+          occasion,
+          relationship,
+          tone,
+          intention,
+          contextWords,
+          receivedText,
+          grammaticalGender: user.preferences?.grammaticalGender || req.body.grammaticalGender,
+        },
+      },
+      respuesta: {
+        result: generatedText,
+      },
+    });
     // 4. Post-procesamiento (Sin await para no bloquear la respuesta)
     // El .catch es vital aquí para que un error en BD no mate la respuesta del usuario
     Promise.all([
@@ -105,6 +131,7 @@ router.post("/generate", getUser, async (req, res) => {
             tone,
             ...req.body,
             contextWords, // Usamos la versión saneada
+            grammaticalGender: user.preferences?.grammaticalGender || req.body.grammaticalGender,
           })
         : Promise.resolve(),
     ]).catch((err) => logger.error("Error en post-procesamiento", err));
@@ -118,14 +145,7 @@ router.post("/generate", getUser, async (req, res) => {
         planMetadata.access.daily_limit - (user.usage?.generationsCount || 0),
     });
   } catch (err) {
-    if (err.statusCode) {
-      return res.status(err.statusCode).json({
-        error: err.message,
-        upsell: err.upsell,
-      });
-    }
-    logger.error("Error en la generación de magia", { error: err.message });
-    res.status(500).json({ error: "Error en la magia" });
+    next(err);
   }
 });
 

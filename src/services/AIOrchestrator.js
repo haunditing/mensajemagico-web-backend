@@ -55,6 +55,7 @@ const executeWithFallback = async (
 
   try {
     // Intento 1 con el modelo ideal
+    logger.info(`AIOrchestrator: Ejecutando estrategia principal`, { model: strategy.model });
     return await apiCallFunction(strategy.model);
   } catch (error) {
     const isServiceUnavailable =

@@ -14,9 +14,11 @@ const remindersRoutes = require("./src/routes/reminders");
 const { initScheduledJobs } = require("./src/services/SchedulerService");
 const contactsRoutes = require("./src/routes/contacts");
 const guardianRoutes = require("./src/routes/guardian");
+const logsRoutes = require("./src/routes/logs");
+const adminRoutes = require("./src/routes/admin");
 
 const logger = require("./src/utils/logger");
-const requestLogger = require("./src/middleware/requestLogger");
+const errorHandler = require("./src/middleware/errorHandler");
 
 const app = express();
 
@@ -42,7 +44,6 @@ app.use((req, res, next) => {
   }
 });
 app.use("/api/payments/webhook", express.raw({ type: "application/json" }));
-app.use(requestLogger);
 
 // Logger de peticiones básico
 app.use((req, res, next) => {
@@ -61,12 +62,11 @@ app.use("/api/mercadopago", mercadopagoRoutes);
 app.use("/api/reminders", remindersRoutes);
 app.use("/api/contacts", contactsRoutes);
 app.use("/api/guardian", guardianRoutes);
+app.use("/api/logs", logsRoutes);
+app.use("/api/admin", adminRoutes);
 
 // Manejo de errores global
-app.use((err, req, res, next) => {
-  logger.error("Error no controlado", { error: err.message, stack: err.stack });
-  res.status(500).json({ error: "Error interno del servidor" });
-});
+app.use(errorHandler);
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () =>

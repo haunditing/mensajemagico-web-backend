@@ -26,6 +26,7 @@ const generate = async (aiConfig, data) => {
     lastUserStyle, // Recibimos el estilo aprendido
     preferredLexicon, // Recibimos el ADN Léxico
     grammaticalGender,
+    intention,
   } = data;
 
   // 1. GESTIÓN DE CACHÉ
@@ -47,10 +48,26 @@ const generate = async (aiConfig, data) => {
     neutralMode,
   );
 
+  // 2.5. CONSTRUCCIÓN DE INTENCIÓN DEL GUARDIÁN
+  let intentionInstruction = "";
+  if (intention) {
+    const intentionMap = {
+      "low_effort": "OBJETIVO PSICOLÓGICO: BAJO ESFUERZO (Solo Cariño). Tu meta es mantener el vínculo con calidez pero sin generar carga cognitiva. No hagas preguntas que obliguen a responder. Sé afectuoso pero ligero.",
+      "inquiry": "OBJETIVO PSICOLÓGICO: CONECTAR (Indagación). Tu meta es abrir la conversación. Haz una pregunta interesante o muestra curiosidad genuina sobre su vida para incentivar una respuesta.",
+      "resolutive": "OBJETIVO PSICOLÓGICO: RESOLVER. Tu meta es cerrar un plan o tomar una decisión. Sé directo, propón opciones claras (A o B) y evita la ambigüedad.",
+      "action": "OBJETIVO PSICOLÓGICO: IMPULSAR (Acción). Tu meta es lograr que la otra persona haga algo. Usa verbos imperativos suaves, sé persuasivo y transmite la importancia de la tarea de forma educada."
+    };
+
+    if (intentionMap[intention]) {
+      intentionInstruction = `\n  ### INSTRUCCIÓN DEL GUARDIÁN (PRIORIDAD ALTA)\n  ${intentionMap[intention]}`;
+    }
+  }
+
   // 3. CONSTRUCCIÓN DEL SYSTEM INSTRUCTION (Reglas de Oro)
   const systemInstructionText = `
   ### ROLE
   Eres el "Guardián de Sentimiento", un motor de inteligencia emocional avanzada. Tu misión es transformar recordatorios fríos en puentes humanos genuinos. No eres un redactor; eres un facilitador de vínculos.
+${intentionInstruction}
 
   ### REGLAS DE ORO DE NATURALIDAD (CRÍTICO)
   1. **PROHIBICIÓN GEOGRÁFICA:** Queda estrictamente PROHIBIDO mencionar nombres de ciudades, monumentos, sitios turísticos o clichés de postales (ej. NO menciones Murallas, La Vitrola, coches de caballos, Getsemaní, Monserrate, etc.).
@@ -119,6 +136,14 @@ const generate = async (aiConfig, data) => {
       finalPrompt = promptText;
     }
 
+    // --- LOGGING: Registro del Prompt enviado ---
+    logger.info(`🤖 AI Request [${selectedModel}]`, {
+      model: selectedModel,
+      grammaticalGender, // <-- Verificación explícita en el log
+      systemInstruction: isGemma ? "Injected in prompt" : systemInstructionText,
+      userPrompt: promptText
+    });
+
     // 5. CONFIGURACIÓN DE GENERACIÓN Y SEGURIDAD
     const generationConfig = {
       temperature: aiConfig.temperature || 0.7,
@@ -155,6 +180,12 @@ const generate = async (aiConfig, data) => {
 
     const response = await result.response;
     const generatedText = response.text();
+
+    // --- LOGGING: Registro de la Respuesta recibida ---
+    logger.info(`✨ AI Response [${selectedModel}]`, {
+      model: selectedModel,
+      response: generatedText
+    });
 
     // 7. PERSISTENCIA Y MÉTRICAS
     responseCache.set(cacheKey, {

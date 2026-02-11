@@ -4,7 +4,7 @@ const router = express.Router();
 const Reminder = require("../models/Reminder");
 const User = require("../models/User");
 const HolidayService = require("../services/HolidayService");
-const authenticate = require("../middleware/auth"); // Asegúrate de tener este middleware
+const { authenticate } = require("../middleware/auth");
 const logger = require("../utils/logger");
 
 // Middleware para verificar Premium

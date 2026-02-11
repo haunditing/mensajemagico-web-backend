@@ -5,6 +5,7 @@ const UserSchema = new mongoose.Schema({
   email: { type: String, required: true, unique: true },
   stripeCustomerId: { type: String },
   subscriptionId: { type: String }, // ID de la suscripción activa en Stripe
+  role: { type: String, default: "user" },
   password: { type: String },
 
   // Nivel del plan actual (mapeado a las claves del JSON: 'guest', 'freemium', 'premium')

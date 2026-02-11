@@ -1,7 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const Contact = require("../models/Contact");
-const authenticate = require("../middleware/auth");
+const { authenticate } = require("../middleware/auth");
 
 // GET /api/contacts - Listar contactos
 router.get("/", authenticate, async (req, res) => {

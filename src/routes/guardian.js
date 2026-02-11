@@ -2,7 +2,7 @@ const express = require("express");
 const router = express.Router();
 const Contact = require("../models/Contact");
 const GuardianService = require("../services/GuardianService");
-const authenticate = require("../middleware/auth");
+const { authenticate } = require("../middleware/auth");
 const logger = require("../utils/logger");
 
 // POST /api/guardian/learn - Aprender de la edición del usuario

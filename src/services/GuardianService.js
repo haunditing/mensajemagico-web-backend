@@ -24,10 +24,11 @@ let anchorVectors = null;
 const getAnchors = async () => {
   if (anchorVectors) return anchorVectors;
 
+  // Ampliamos los conceptos para equilibrar género gramatical y matices (ej. Gratitud (F) vs Agradecimiento (M))
   const positiveConcept =
-    "Amor, cercanía, gratitud, celebración, intimidad, confianza, alegría, apoyo, conexión profunda";
+    "Amor, cariño, cercanía, gratitud, agradecimiento, celebración, intimidad, confianza, seguridad, alegría, entusiasmo, apoyo, respaldo, conexión profunda, vínculo";
   const negativeConcept =
-    "Distancia, frialdad, indiferencia, olvido, conflicto, formalidad excesiva, desconexión";
+    "Distancia, alejamiento, frialdad, indiferencia, desinterés, olvido, abandono, conflicto, problema, formalidad excesiva, rigidez, desconexión, aislamiento";
 
   try {
     const [posRes, negRes] = await Promise.all([
@@ -147,7 +148,7 @@ const calculateFriction = (original, edited) => {
 
 // Extracción de ADN Léxico (Palabras nuevas que no estaban en el original)
 const extractLexicalDNA = (original, edited) => {
-  const clean = (text) => text.toLowerCase().replace(/[^\w\sáéíóúñ]/gi, '').split(/\s+/);
+  const clean = (text) => text.toLowerCase().replace(/[^\w\sáéíóúñü]/gi, '').split(/\s+/);
   const originalSet = new Set(clean(original));
   const editedArr = clean(edited);
   // Filtramos palabras cortas (conectores) y devolvemos solo las nuevas
@@ -194,7 +195,7 @@ const getContext = async (userId, contactId) => {
 const recordInteraction = async (
   userId,
   contactId,
-  { occasion, tone, content },
+  { occasion, tone, content, grammaticalGender },
 ) => {
   try {
     if (!contactId) return;
@@ -226,6 +227,7 @@ const recordInteraction = async (
       contactId,
       newHealth: contact.relationalHealth,
       bonus: healthBonus,
+      genderContext: grammaticalGender || "N/A",
     });
   } catch (error) {
     logger.error("Error en recordInteraction del Guardián", { error });

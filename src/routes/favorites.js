@@ -1,7 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const Favorite = require("../models/Favorite");
-const authenticate = require("../middleware/auth");
+const { authenticate } = require("../middleware/auth");
 const logger = require("../utils/logger");
 
 // Obtener todos los favoritos del usuario
