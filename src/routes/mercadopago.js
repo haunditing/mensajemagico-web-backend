@@ -10,7 +10,7 @@ const logger = require("../utils/logger");
  * @desc Inicia el flujo de suscripción generando el link de pago
  */
 router.post("/create_preference", async (req, res) => {
-  const { userId, planId, country } = req.body;
+  const { userId, planId, country, deviceId } = req.body;
   const clientUrl = process.env.CLIENT_URL || "https://www.mensajemagico.com";
 
   try {
@@ -56,6 +56,7 @@ router.post("/create_preference", async (req, res) => {
       backUrl: `${clientUrl}/success`,
       frequency,
       frequencyType: "months",
+      deviceId, // Pasamos el ID del dispositivo
     });
 
     res.json({
