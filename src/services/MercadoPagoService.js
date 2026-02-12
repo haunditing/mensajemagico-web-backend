@@ -11,7 +11,6 @@ const client = new MercadoPagoConfig({
   accessToken: process.env.MP_ACCESS_TOKEN,
   options: {
     timeout: 30000, // Solución al error de Timeout
-    idempotencyKey: "mensajemagico_sub_key", // Opcional: Ayuda a evitar cargos duplicados
   },
 });
 
