@@ -18,16 +18,20 @@ router.post("/checkout", async (req, res) => {
 
     // Definir precio según el plan y el intervalo seleccionado
     const premiumConfig = PLAN_CONFIG.subscription_plans.premium;
-    let amountInCents;
+    const isYearly = planId === "premium_yearly";
 
-    // Selección explícita del precio
-    if (planId === "premium_yearly") {
-      amountInCents = premiumConfig.pricing_hooks.wompi_price_in_cents_yearly;
-    } else if (planId === "premium_monthly") {
-      amountInCents = premiumConfig.pricing_hooks.wompi_price_in_cents_monthly;
-    } else {
+    if (!isYearly && planId !== "premium_monthly") {
       logger.warn(`Plan desconocido recibido: "${planId}". Usando precio mensual por defecto.`);
-      amountInCents = premiumConfig.pricing_hooks.wompi_price_in_cents_monthly;
+    }
+
+    const wompiKey = isYearly ? "wompi_price_in_cents_yearly" : "wompi_price_in_cents_monthly";
+    const mpKey = isYearly ? "mercadopago_price_yearly" : "mercadopago_price_monthly";
+
+    let amountInCents = premiumConfig.pricing_hooks[wompiKey];
+
+    // Fallback: Si no está configurado explícitamente, calculamos desde el precio base (COP * 100)
+    if (!amountInCents && premiumConfig.pricing_hooks[mpKey]) {
+      amountInCents = Math.round(premiumConfig.pricing_hooks[mpKey] * 100);
     }
 
     logger.info(`Precio resuelto para Wompi: ${amountInCents} (Plan: ${planId})`);
@@ -63,13 +67,19 @@ router.post("/checkout", async (req, res) => {
 router.post("/webhooks/wompi", async (req, res) => {
   const event = req.body;
   
-  logger.info("Webhook Wompi recibido", { reference: event?.data?.transaction?.reference, status: event?.data?.transaction?.status });
+  // Validación preliminar de estructura para evitar errores 500 si el payload está mal formado
+  if (!event || !event.data || !event.signature || !event.timestamp) {
+    logger.warn("Webhook Wompi recibido con estructura inválida");
+    return res.status(400).json({ error: "Payload inválido" });
+  }
+
+  logger.info("Webhook Wompi recibido", { reference: event.data.transaction?.reference, status: event.data.transaction?.status });
 
   try {
     // 1. Validar firma de seguridad (Checksum)
     const isValid = WompiService.verifyWebhookSignature(event);
     if (!isValid) {
-      logger.warn("Firma de Webhook Wompi inválida", { signature: event.signature });
+      logger.warn("Firma de Webhook Wompi inválida", { checksum: event.signature.checksum, reference: event.data.transaction?.reference });
       return res.status(400).json({ error: "Firma inválida" });
     }
 

@@ -26,6 +26,10 @@ const createPreference = async ({
   deviceId,
   idempotencyKey,
 }) => {
+  if (!title) throw new Error("El título es obligatorio para crear la preferencia.");
+  if (!price || Number(price) <= 0) throw new Error("El precio es inválido.");
+  if (!payerEmail) throw new Error("El email del pagador es obligatorio.");
+
   const preference = new Preference(client);
 
   const requestOptions = { idempotencyKey };
@@ -88,6 +92,11 @@ const createSubscription = async ({
   deviceId,
   idempotencyKey,
 }) => {
+  if (!title) throw new Error("El título (reason) es obligatorio para la suscripción.");
+  if (!price || Number(price) <= 0) throw new Error("El precio es inválido.");
+  if (!payerEmail) throw new Error("El email del pagador es obligatorio.");
+  if (!backUrl) throw new Error("La URL de retorno (back_url) es obligatoria.");
+
   const preApproval = new PreApproval(client);
 
   const requestOptions = { idempotencyKey };

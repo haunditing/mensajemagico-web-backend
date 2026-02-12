@@ -32,12 +32,16 @@ mongoose
 initScheduledJobs();
 
 // Middleware
+// Permitimos múltiples orígenes definidos en la variable de entorno (separados por coma)
+const clientUrls = process.env.CLIENT_URL ? process.env.CLIENT_URL.split(',').map(url => url.trim()) : [];
+
 const allowedOrigins = [
-  process.env.CLIENT_URL,
+  ...clientUrls,
   "https://www.mensajemagico.com",
   "https://mensajemagico.com",
   "http://localhost:5173", // Vite default
-  "http://localhost:3000"  // Next.js / CRA default
+  "http://localhost:3000", // Next.js / CRA default
+  "http://192.168.1.10:5173" // Tu IP local para pruebas en red
 ].filter(Boolean);
 
 app.use(cors({
