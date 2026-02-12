@@ -16,7 +16,9 @@ const getTRM = async () => {
 
   try {
     // API de Datos Abiertos Colombia (Socrata)
-    const response = await fetch("https://www.datos.gov.co/resource/32sa-8pi3.json?$limit=1&$order=vigenciahasta DESC");
+    const response = await fetch(
+      "https://www.datos.gov.co/resource/32sa-8pi3.json?$limit=1&$order=vigenciahasta DESC",
+    );
     if (response.ok) {
       const data = await response.json();
       if (data && data.length > 0 && data[0].valor) {
@@ -26,7 +28,9 @@ const getTRM = async () => {
       }
     }
   } catch (error) {
-    logger.warn("Error obteniendo TRM, usando valor cacheado", { error: error.message });
+    logger.warn("Error obteniendo TRM, usando valor cacheado", {
+      error: error.message,
+    });
   }
   return cachedTRM;
 };
@@ -37,7 +41,19 @@ const getTRM = async () => {
  */
 router.post("/create_preference", async (req, res) => {
   const { userId, planId, country, deviceId } = req.body;
-  const clientUrl = process.env.CLIENT_URL || "https://www.mensajemagico.com";
+
+  // Determinar la URL base para el retorno (back_url)
+  let clientUrl = process.env.CLIENT_URL || "https://www.mensajemagico.com";
+
+  // Si CLIENT_URL contiene múltiples orígenes (separados por coma), seleccionamos el correcto
+  if (clientUrl.includes(",")) {
+    const origins = clientUrl.split(",").map((u) => u.trim());
+    const reqOrigin = req.headers.origin;
+
+    // Si el origen de la petición está en nuestra lista permitida, lo usamos. Si no, el primero.
+    clientUrl =
+      reqOrigin && origins.includes(reqOrigin) ? reqOrigin : origins[0];
+  }
 
   try {
     const user = await User.findById(userId);
@@ -80,7 +96,13 @@ router.post("/create_preference", async (req, res) => {
 
     const idempotencyKey = crypto.randomUUID();
     // Log de depuración para verificar los datos antes de enviar a MP
-    logger.info("Iniciando creación de preferencia MP", { userId, price, title, frequency, idempotencyKey });
+    logger.info("Iniciando creación de preferencia MP", {
+      userId,
+      price,
+      title,
+      frequency,
+      idempotencyKey,
+    });
 
     // 2. Crear Suscripción en Mercado Pago
     const subscription = await MercadoPagoService.createSubscription({
@@ -107,7 +129,12 @@ router.post("/create_preference", async (req, res) => {
       error: error.message,
     });
     // Devolvemos el mensaje técnico en 'details' para facilitar la depuración en el frontend
-    res.status(500).json({ error: "No se pudo generar el link de pago", details: error.message });
+    res
+      .status(500)
+      .json({
+        error: "No se pudo generar el link de pago",
+        details: error.message,
+      });
   }
 });
 
@@ -157,14 +184,26 @@ router.post("/webhook", async (req, res) => {
           lastPaymentDate: new Date(),
         });
         logger.info(`Pago único aprobado: ${userId}`);
-      } else if (payment.status === "pending" || payment.status === "in_process") {
+      } else if (
+        payment.status === "pending" ||
+        payment.status === "in_process"
+      ) {
         // El pago está en revisión. No actualizamos a Premium todavía.
-        logger.info(`Pago en estado '${payment.status}' para usuario: ${userId}. Esperando confirmación.`);
-      } else if (payment.status === "rejected" || payment.status === "cancelled") {
+        logger.info(
+          `Pago en estado '${payment.status}' para usuario: ${userId}. Esperando confirmación.`,
+        );
+      } else if (
+        payment.status === "rejected" ||
+        payment.status === "cancelled"
+      ) {
         // El pago falló o fue cancelado.
-        logger.warn(`Pago '${payment.status}' para usuario: ${userId}. No se otorga acceso.`);
+        logger.warn(
+          `Pago '${payment.status}' para usuario: ${userId}. No se otorga acceso.`,
+        );
       } else {
-        logger.info(`Pago con estado: ${payment.status} para usuario: ${userId}`);
+        logger.info(
+          `Pago con estado: ${payment.status} para usuario: ${userId}`,
+        );
       }
     }
 

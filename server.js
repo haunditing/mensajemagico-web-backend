@@ -33,7 +33,9 @@ initScheduledJobs();
 
 // Middleware
 // Permitimos múltiples orígenes definidos en la variable de entorno (separados por coma)
-const clientUrls = process.env.CLIENT_URL ? process.env.CLIENT_URL.split(',').map(url => url.trim()) : [];
+const clientUrls = process.env.CLIENT_URL
+  ? process.env.CLIENT_URL.split(",").map((url) => url.trim())
+  : [];
 
 const allowedOrigins = [
   ...clientUrls,
@@ -41,20 +43,25 @@ const allowedOrigins = [
   "https://mensajemagico.com",
   "http://localhost:5173", // Vite default
   "http://localhost:3000", // Next.js / CRA default
-  "http://192.168.1.10:5173" // Tu IP local para pruebas en red
+  "http://192.168.1.10:5173", // Tu IP local para pruebas en red
 ].filter(Boolean);
 
-app.use(cors({
-  origin: function (origin, callback) {
-    // Permitir solicitudes sin origen (como apps móviles, curl o Postman)
-    if (!origin) return callback(null, true);
-    if (allowedOrigins.indexOf(origin) === -1) {
-      return callback(new Error('La política CORS no permite este origen'), false);
-    }
-    return callback(null, true);
-  },
-  credentials: true
-}));
+app.use(
+  cors({
+    origin: function (origin, callback) {
+      // Permitir solicitudes sin origen (como apps móviles, curl o Postman)
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.indexOf(origin) === -1) {
+        return callback(
+          new Error("La política CORS no permite este origen"),
+          false,
+        );
+      }
+      return callback(null, true);
+    },
+    credentials: true,
+  }),
+);
 
 // IMPORTANTE: El webhook de Stripe necesita el body raw, el resto JSON.
 // Usamos esta lógica para asegurar que express.json no toque la ruta del webhook.

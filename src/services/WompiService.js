@@ -1,4 +1,5 @@
 const crypto = require("crypto");
+const logger = require("../utils/logger");
 
 /**
  * Genera la firma de integridad para el Widget de Checkout.
@@ -11,6 +12,10 @@ const generateCheckoutSignature = (reference, amountInCents, currency) => {
     throw new Error("WOMPI_INTEGRITY_SECRET no configurado");
 
   const chain = `${reference}${amountInCents}${currency}${integritySecret}`;
+  
+  // Log de depuración para verificar qué se está firmando (útil para error 403)
+  logger.info(`Generando firma Wompi para: ${reference} | ${amountInCents} | ${currency}`);
+  
   const hash = crypto.createHash("sha256").update(chain).digest("hex");
   return hash;
 };

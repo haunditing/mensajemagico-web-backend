@@ -10,6 +10,18 @@ const PLAN_CONFIG = require("../config/plans");
 router.post("/checkout", async (req, res) => {
   const { userId, planId } = req.body; // planId puede ser 'premium_monthly' o 'premium_yearly'
 
+  // Determinar la URL base para el retorno (redirectUrl)
+  let clientUrl = process.env.CLIENT_URL || "https://www.mensajemagico.com";
+
+  // Si CLIENT_URL contiene múltiples orígenes (separados por coma), seleccionamos el correcto
+  if (clientUrl.includes(",")) {
+    const origins = clientUrl.split(",").map((u) => u.trim());
+    const reqOrigin = req.headers.origin;
+    
+    // Si el origen de la petición está en nuestra lista permitida, lo usamos. Si no, el primero.
+    clientUrl = (reqOrigin && origins.includes(reqOrigin)) ? reqOrigin : origins[0];
+  }
+
   logger.info(`Iniciando checkout Wompi`, { userId, planId });
 
   try {
@@ -33,6 +45,9 @@ router.post("/checkout", async (req, res) => {
     if (!amountInCents && premiumConfig.pricing_hooks[mpKey]) {
       amountInCents = Math.round(premiumConfig.pricing_hooks[mpKey] * 100);
     }
+    
+    // Asegurar que sea entero para evitar errores de firma con decimales
+    amountInCents = Math.round(Number(amountInCents));
 
     logger.info(`Precio resuelto para Wompi: ${amountInCents} (Plan: ${planId})`);
 
@@ -53,7 +68,7 @@ router.post("/checkout", async (req, res) => {
       currency,
       signature,
       publicKey: WompiService.getPublicKey(),
-      redirectUrl: `${process.env.CLIENT_URL}/success` // Opcional, para redirección
+      redirectUrl: `${clientUrl}/success` // Opcional, para redirección
     });
 
   } catch (error) {
