@@ -24,10 +24,12 @@ const createPreference = async ({
   failureUrl,
   currency_id,
   deviceId,
+  idempotencyKey,
 }) => {
   const preference = new Preference(client);
 
-  const requestOptions = deviceId ? { headers: { 'X-meli-session-id': deviceId } } : undefined;
+  const requestOptions = { idempotencyKey };
+  if (deviceId) requestOptions.customHeaders = { 'X-meli-session-id': deviceId };
 
   return await preference.create({
     body: {
@@ -84,10 +86,12 @@ const createSubscription = async ({
   frequencyType = "months",
   currency_id,
   deviceId,
+  idempotencyKey,
 }) => {
   const preApproval = new PreApproval(client);
 
-  const requestOptions = deviceId ? { headers: { 'X-meli-session-id': deviceId } } : undefined;
+  const requestOptions = { idempotencyKey };
+  if (deviceId) requestOptions.customHeaders = { 'X-meli-session-id': deviceId };
 
   // Las suscripciones (PreApproval) suelen tardar más en procesarse en los servidores de MP
   return await preApproval.create({
@@ -102,8 +106,8 @@ const createSubscription = async ({
       back_url: backUrl,
       payer_email: payerEmail,
       external_reference: externalReference,
+      status: "pending", // Corregido: Debe ir dentro del body y ser 'pending' para nuevos links
     },
-    status: "authorized",
     requestOptions,
   });
 };

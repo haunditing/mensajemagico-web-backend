@@ -1,4 +1,5 @@
 const express = require("express");
+const crypto = require("crypto");
 const router = express.Router();
 const User = require("../models/User");
 const MercadoPagoService = require("../services/MercadoPagoService");
@@ -77,8 +78,9 @@ router.post("/create_preference", async (req, res) => {
       }
     }
 
+    const idempotencyKey = crypto.randomUUID();
     // Log de depuración para verificar los datos antes de enviar a MP
-    logger.info("Iniciando creación de preferencia MP", { userId, price, title, frequency });
+    logger.info("Iniciando creación de preferencia MP", { userId, price, title, frequency, idempotencyKey });
 
     // 2. Crear Suscripción en Mercado Pago
     const subscription = await MercadoPagoService.createSubscription({
@@ -91,6 +93,7 @@ router.post("/create_preference", async (req, res) => {
       frequency,
       frequencyType: "months",
       deviceId, // Pasamos el ID del dispositivo
+      idempotencyKey, // Enviamos la llave de idempotencia
     });
 
     res.json({
