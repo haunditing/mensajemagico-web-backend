@@ -140,6 +140,7 @@ ${intentionInstruction}
     logger.info(`🤖 AI Request [${selectedModel}]`, {
       model: selectedModel,
       grammaticalGender, // <-- Verificación explícita en el log
+      relationship, // <-- Verificación explícita de la relación
       systemInstruction: isGemma ? "Injected in prompt" : systemInstructionText,
       userPrompt: promptText
     });

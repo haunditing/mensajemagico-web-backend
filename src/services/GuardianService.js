@@ -223,6 +223,8 @@ const recordInteraction = async (
     contact.snoozeCount = 0;
 
     await contact.save();
+
+    console.log(`grabo bien: ${contact}`)
     logger.info("Guardián: Salud actualizada mediante Embeddings", {
       contactId,
       newHealth: contact.relationalHealth,

@@ -61,4 +61,34 @@ router.post("/", authenticate, async (req, res) => {
   }
 });
 
+// PUT /api/contacts/:id - Actualizar contacto
+router.put("/:id", authenticate, async (req, res) => {
+  try {
+    const { name, relationship, grammaticalGender } = req.body;
+    const contact = await Contact.findOne({ _id: req.params.id, userId: req.userId });
+
+    if (!contact) return res.status(404).json({ error: "Contacto no encontrado" });
+
+    if (name) contact.name = name;
+    if (relationship !== undefined) contact.relationship = relationship;
+    if (grammaticalGender !== undefined) contact.grammaticalGender = grammaticalGender;
+
+    await contact.save();
+    res.json(contact);
+  } catch (error) {
+    res.status(500).json({ error: "Error al actualizar contacto" });
+  }
+});
+
+// DELETE /api/contacts/:id - Eliminar contacto
+router.delete("/:id", authenticate, async (req, res) => {
+  try {
+    const contact = await Contact.findOneAndDelete({ _id: req.params.id, userId: req.userId });
+    if (!contact) return res.status(404).json({ error: "Contacto no encontrado" });
+    res.json({ message: "Contacto eliminado" });
+  } catch (error) {
+    res.status(500).json({ error: "Error al eliminar contacto" });
+  }
+});
+
 module.exports = router;

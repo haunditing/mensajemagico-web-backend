@@ -9,7 +9,8 @@ const ContactSchema = new mongoose.Schema(
       required: true,
     },
     name: { type: String, required: true },
-    relationship: { type: String }, // ej: 'pareja', 'madre', 'jefe'
+    relationship: { type: String, lowercase: true, trim: true }, // ej: 'pareja', 'madre', 'jefe'
+    grammaticalGender: { type: String },
 
     // Métricas del Guardián
     relationalHealth: { type: Number, default: 5, min: 1, max: 10 }, // 1=Frío, 10=Íntimo
