@@ -5,6 +5,31 @@ const MercadoPagoService = require("../services/MercadoPagoService");
 const PLAN_CONFIG = require("../config/plans");
 const logger = require("../utils/logger");
 
+// Cache simple para la TRM (Tasa Representativa del Mercado)
+let cachedTRM = 3980;
+let lastTRMUpdate = 0;
+
+const getTRM = async () => {
+  // Actualizar cada 12 horas (43200000 ms)
+  if (Date.now() - lastTRMUpdate < 43200000) return cachedTRM;
+
+  try {
+    // API de Datos Abiertos Colombia (Socrata)
+    const response = await fetch("https://www.datos.gov.co/resource/32sa-8pi3.json?$limit=1&$order=vigenciahasta DESC");
+    if (response.ok) {
+      const data = await response.json();
+      if (data && data.length > 0 && data[0].valor) {
+        cachedTRM = parseFloat(data[0].valor);
+        lastTRMUpdate = Date.now();
+        logger.info(`TRM actualizada dinámicamente: ${cachedTRM}`);
+      }
+    }
+  } catch (error) {
+    logger.warn("Error obteniendo TRM, usando valor cacheado", { error: error.message });
+  }
+  return cachedTRM;
+};
+
 /**
  * @route POST /api/mercadopago/create_preference
  * @desc Inicia el flujo de suscripción generando el link de pago
@@ -20,14 +45,15 @@ router.post("/create_preference", async (req, res) => {
     const premiumConfig = PLAN_CONFIG.subscription_plans.premium;
     let price, title;
     const currency_id = "COP"; // Forzamos COP para evitar el error de MP,
-    const TRM = 3980; // Define una tasa de cambio fija (ej. 1 USD = 3980 COP)
-    frequency = 1;
+    const TRM = await getTRM(); // Obtiene la TRM dinámica con fallback
+    let frequency = 1;
 
     if (country === "CO") {
       // --- CONCEPTO A: USUARIO LOCAL ---
       if (planId === "premium_yearly") {
         price = premiumConfig.pricing_hooks.mercadopago_price_yearly;
         title = "Suscripción Anual - MensajeMágico Premium";
+        frequency = 12;
       } else {
         price = premiumConfig.pricing_hooks.mercadopago_price_monthly;
         title = "Suscripción Mensual - MensajeMágico Premium";
@@ -40,11 +66,19 @@ router.post("/create_preference", async (req, res) => {
           ? premiumConfig.pricing_hooks.mercadopago_price_yearly_usd
           : premiumConfig.pricing_hooks.mercadopago_price_monthly_usd;
 
-      price = priceInUsd * TRM;
+      // IMPORTANTE: Redondear a entero para COP para evitar errores de formato en MP
+      price = Math.round(priceInUsd * TRM);
 
       // La leyenda estratégica:
       title = `Plan Premium Internacional (Equivalente a $${priceInUsd} USD)`;
+
+      if (planId === "premium_yearly") {
+        frequency = 12;
+      }
     }
+
+    // Log de depuración para verificar los datos antes de enviar a MP
+    logger.info("Iniciando creación de preferencia MP", { userId, price, title, frequency });
 
     // 2. Crear Suscripción en Mercado Pago
     const subscription = await MercadoPagoService.createSubscription({
@@ -69,7 +103,8 @@ router.post("/create_preference", async (req, res) => {
       userId,
       error: error.message,
     });
-    res.status(500).json({ error: "No se pudo generar el link de pago" });
+    // Devolvemos el mensaje técnico en 'details' para facilitar la depuración en el frontend
+    res.status(500).json({ error: "No se pudo generar el link de pago", details: error.message });
   }
 });
 
@@ -119,10 +154,14 @@ router.post("/webhook", async (req, res) => {
           lastPaymentDate: new Date(),
         });
         logger.info(`Pago único aprobado: ${userId}`);
+      } else if (payment.status === "pending" || payment.status === "in_process") {
+        // El pago está en revisión. No actualizamos a Premium todavía.
+        logger.info(`Pago en estado '${payment.status}' para usuario: ${userId}. Esperando confirmación.`);
+      } else if (payment.status === "rejected" || payment.status === "cancelled") {
+        // El pago falló o fue cancelado.
+        logger.warn(`Pago '${payment.status}' para usuario: ${userId}. No se otorga acceso.`);
       } else {
-        logger.info(
-          `Pago con estado: ${payment.status} para usuario: ${userId}`,
-        );
+        logger.info(`Pago con estado: ${payment.status} para usuario: ${userId}`);
       }
     }
 
