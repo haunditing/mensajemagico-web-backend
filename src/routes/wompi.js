@@ -41,16 +41,16 @@ router.post("/checkout", async (req, res) => {
 
     let amountInCents;
 
-    // Prioridad 1: Usar el precio de MercadoPago (COP) para asegurar paridad exacta
+    // Prioridad 1: Configuración específica de Wompi
     // Verificamos explícitamente que no sea undefined/null (para permitir valor 0 si fuera necesario)
-    if (premiumConfig.pricing_hooks[mpKey] !== undefined && premiumConfig.pricing_hooks[mpKey] !== null) {
+    if (premiumConfig.pricing_hooks[wompiKey] !== undefined && premiumConfig.pricing_hooks[wompiKey] !== null) {
+      amountInCents = premiumConfig.pricing_hooks[wompiKey];
+      logger.info(`[Wompi] Usando precio específico de Wompi: ${amountInCents} centavos`);
+    } else if (premiumConfig.pricing_hooks[mpKey] !== undefined && premiumConfig.pricing_hooks[mpKey] !== null) {
+      // Prioridad 2: Usar el precio de MercadoPago (COP) como fallback para asegurar paridad
       const mpPrice = premiumConfig.pricing_hooks[mpKey];
       amountInCents = Math.round(mpPrice * 100);
       logger.info(`[Wompi] Usando precio base de MercadoPago: ${mpPrice} COP -> ${amountInCents} centavos`);
-    } else if (premiumConfig.pricing_hooks[wompiKey] !== undefined && premiumConfig.pricing_hooks[wompiKey] !== null) {
-      // Prioridad 2: Configuración específica de Wompi (Solo si no hay precio base)
-      amountInCents = premiumConfig.pricing_hooks[wompiKey];
-      logger.info(`[Wompi] Usando precio específico de Wompi: ${amountInCents} centavos`);
     }
     
     // Asegurar que sea entero para evitar errores de firma con decimales

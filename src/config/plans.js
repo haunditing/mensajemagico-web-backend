@@ -91,8 +91,8 @@ const PLAN_CONFIG = {
       pricing_hooks: {
         stripe_price_id_monthly: process.env.STRIPE_PRICE_ID_MONTHLY || "price_1Syif3D9BNQ52nHRE7qngWUu",
         stripe_price_id_yearly: process.env.STRIPE_PRICE_ID_YEARLY || "price_1Syig1D9BNQ52nHRtvvanYpY",
-        wompi_price_in_cents_monthly: process.env.WOMPI_PRICE_IN_CENTS_MONTHLY ? Number(process.env.WOMPI_PRICE_IN_CENTS_MONTHLY) : 1836000,
-        wompi_price_in_cents_yearly: process.env.WOMPI_PRICE_IN_CENTS_YEARLY ? Number(process.env.WOMPI_PRICE_IN_CENTS_YEARLY) : 19000000,
+        wompi_price_in_cents_monthly: process.env.WOMPI_PRICE_IN_CENTS_MONTHLY ? Number(process.env.WOMPI_PRICE_IN_CENTS_MONTHLY) : undefined,
+        wompi_price_in_cents_yearly: process.env.WOMPI_PRICE_IN_CENTS_YEARLY ? Number(process.env.WOMPI_PRICE_IN_CENTS_YEARLY) : undefined,
         mercadopago_price_monthly: process.env.MERCADOPAGO_PRICE_MONTHLY ? Number(process.env.MERCADOPAGO_PRICE_MONTHLY) : 18360,
         mercadopago_price_yearly: process.env.MERCADOPAGO_PRICE_YEARLY ? Number(process.env.MERCADOPAGO_PRICE_YEARLY) : 190000,
         mercadopago_price_monthly_usd: process.env.MERCADOPAGO_PRICE_MONTHLY_USD ? Number(process.env.MERCADOPAGO_PRICE_MONTHLY_USD) : 4.99,

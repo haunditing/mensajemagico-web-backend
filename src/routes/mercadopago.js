@@ -118,6 +118,11 @@ router.post("/create_preference", async (req, res) => {
       idempotencyKey, // Enviamos la llave de idempotencia
     });
 
+    logger.info("Preferencia MP creada", { 
+      init_point: subscription.init_point, 
+      sandbox: subscription.sandbox_init_point || "No específico (usando init_point)" 
+    });
+
     res.json({
       init_point: subscription.init_point,
       sandbox_init_point:
