@@ -36,14 +36,21 @@ router.post("/checkout", async (req, res) => {
       logger.warn(`Plan desconocido recibido: "${planId}". Usando precio mensual por defecto.`);
     }
 
-    const wompiKey = isYearly ? "wompi_price_in_cents_yearly" : "wompi_price_in_cents_monthly";
     const mpKey = isYearly ? "mercadopago_price_yearly" : "mercadopago_price_monthly";
+    const wompiKey = isYearly ? "wompi_price_in_cents_yearly" : "wompi_price_in_cents_monthly";
 
-    let amountInCents = premiumConfig.pricing_hooks[wompiKey];
+    let amountInCents;
 
-    // Fallback: Si no está configurado explícitamente, calculamos desde el precio base (COP * 100)
-    if (!amountInCents && premiumConfig.pricing_hooks[mpKey]) {
-      amountInCents = Math.round(premiumConfig.pricing_hooks[mpKey] * 100);
+    // Prioridad 1: Usar el precio de MercadoPago (COP) para asegurar paridad exacta
+    // Verificamos explícitamente que no sea undefined/null (para permitir valor 0 si fuera necesario)
+    if (premiumConfig.pricing_hooks[mpKey] !== undefined && premiumConfig.pricing_hooks[mpKey] !== null) {
+      const mpPrice = premiumConfig.pricing_hooks[mpKey];
+      amountInCents = Math.round(mpPrice * 100);
+      logger.info(`[Wompi] Usando precio base de MercadoPago: ${mpPrice} COP -> ${amountInCents} centavos`);
+    } else if (premiumConfig.pricing_hooks[wompiKey] !== undefined && premiumConfig.pricing_hooks[wompiKey] !== null) {
+      // Prioridad 2: Configuración específica de Wompi (Solo si no hay precio base)
+      amountInCents = premiumConfig.pricing_hooks[wompiKey];
+      logger.info(`[Wompi] Usando precio específico de Wompi: ${amountInCents} centavos`);
     }
     
     // Asegurar que sea entero para evitar errores de firma con decimales

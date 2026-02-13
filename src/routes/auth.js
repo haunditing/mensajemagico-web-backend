@@ -4,6 +4,9 @@ const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
 const User = require("../models/User");
+const Contact = require("../models/Contact");
+const Favorite = require("../models/Favorite");
+const Reminder = require("../models/Reminder");
 const PlanService = require("../services/PlanService");
 const logger = require("../utils/logger");
 const rateLimiter = require("../middleware/rateLimiter");
@@ -291,6 +294,62 @@ router.put("/profile", authenticate, async (req, res) => {
   } catch (error) {
     logger.error("Error actualizando perfil", { error });
     res.status(500).json({ error: "Error al actualizar perfil" });
+  }
+});
+
+// 7. Cambiar contraseña (autenticado)
+router.put("/change-password", authenticate, async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    const user = await User.findById(req.userId);
+
+    if (!user) {
+      return res.status(404).json({ error: "Usuario no encontrado" });
+    }
+
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ error: "Faltan datos" });
+    }
+
+    // Verificar contraseña actual
+    const isMatch = await bcrypt.compare(currentPassword, user.password);
+    if (!isMatch) {
+      return res.status(400).json({ error: "La contraseña actual es incorrecta" });
+    }
+
+    // Hashear nueva contraseña
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(newPassword, salt);
+
+    user.password = hashedPassword;
+    await user.save();
+
+    res.json({ message: "Contraseña actualizada exitosamente" });
+  } catch (error) {
+    logger.error("Error cambiando contraseña", { error });
+    res.status(500).json({ error: "Error al cambiar la contraseña" });
+  }
+});
+
+// 8. Eliminar cuenta permanentemente
+router.delete("/delete-account", authenticate, async (req, res) => {
+  try {
+    const userId = req.userId;
+
+    // 1. Eliminar datos asociados para mantener la DB limpia
+    await Promise.all([
+      Contact.deleteMany({ userId }),
+      Favorite.deleteMany({ userId }),
+      Reminder.deleteMany({ userId }),
+    ]);
+
+    // 2. Eliminar el usuario
+    await User.findByIdAndDelete(userId);
+
+    res.json({ message: "Cuenta eliminada permanentemente" });
+  } catch (error) {
+    logger.error("Error eliminando cuenta", { error });
+    res.status(500).json({ error: "Error al eliminar la cuenta" });
   }
 });
 

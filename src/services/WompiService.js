@@ -7,7 +7,8 @@ const logger = require("../utils/logger");
  * Nota: Aunque el widget acepte 'expiration-time', este NO se incluye en la firma.
  */
 const generateCheckoutSignature = (reference, amountInCents, currency) => {
-  const integritySecret = process.env.WOMPI_INTEGRITY_SECRET;
+  // Aseguramos que el secreto no tenga espacios extra (causa común de error 403)
+  const integritySecret = process.env.WOMPI_INTEGRITY_SECRET?.trim();
   if (!integritySecret)
     throw new Error("WOMPI_INTEGRITY_SECRET no configurado");
 
@@ -26,7 +27,7 @@ const generateCheckoutSignature = (reference, amountInCents, currency) => {
  */
 const verifyWebhookSignature = (eventData) => {
   const eventsSecret =
-    process.env.WOMPI_EVENTS_SECRET || process.env.WOMPI_INTEGRITY_SECRET;
+    (process.env.WOMPI_EVENTS_SECRET || process.env.WOMPI_INTEGRITY_SECRET)?.trim();
   if (!eventsSecret) throw new Error("WOMPI_EVENTS_SECRET no configurado");
 
   const { data, signature, timestamp } = eventData;
