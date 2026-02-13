@@ -28,6 +28,7 @@ const generate = async (aiConfig, data) => {
     grammaticalGender,
     intention,
     avoidTopics, // Recibimos la lista de exclusión del historial
+    styleInstructions, // Recibimos las instrucciones dinámicas del Guardián (Filtro de Profundidad)
   } = data;
 
   // 1. GESTIÓN DE CACHÉ
@@ -110,9 +111,12 @@ ${intentionInstruction}
     - Occasion: ${occasion}
     - Relationship: ${relationship || "General"}
     - Tone: ${tone}
+    - Intention: ${intention || "N/A"}
     - Context: ${contextWords || "Ninguno"}
     - ReceivedText: ${receivedText || "N/A"}
     - RegionalContext: ${regionalBoost}
+
+    ${styleInstructions ? `### INSTRUCCIONES DE ESTILO (GUARDIÁN)\n${styleInstructions}` : ""}
 
     ${formatInstruction || ""}
   `.trim();
@@ -142,8 +146,11 @@ ${intentionInstruction}
     logger.info(`🤖 AI Request [${selectedModel}]`, {
       model: selectedModel,
       grammaticalGender, // <-- Verificación explícita en el log
+      intention, // <-- Verificación de la intención
+      relationalHealth, // <-- Verificación de la salud relacional
       relationship, // <-- Verificación explícita de la relación
       avoidTopics, // <-- Verificación de la lista de exclusión
+      styleInstructions, // <-- Verificación de las instrucciones de estilo
       formatInstruction, // <-- Verificación de la instrucción de formato (Minificación)
       systemInstruction: isGemma ? "Injected in prompt" : systemInstructionText,
       userPrompt: promptText
