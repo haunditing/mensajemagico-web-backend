@@ -89,14 +89,14 @@ const PLAN_CONFIG = {
         yearly_monthly_equivalent: 3.99,
       },
       pricing_hooks: {
-        stripe_price_id_monthly: "price_1Syif3D9BNQ52nHRE7qngWUu", // ID real de Stripe
-        stripe_price_id_yearly: "price_1Syig1D9BNQ52nHRtvvanYpY", // ID real de Stripe
-        wompi_price_in_cents_monthly: 2000000, // $20.000 COP
-        wompi_price_in_cents_yearly: 19000000, // $190.000 COP
-        mercadopago_price_monthly: 18360, // $18.360 (Moneda local o base)
-        mercadopago_price_yearly: 190000, // $190.000
-        mercadopago_price_monthly_usd: 4.99, // $4.99 USD
-        mercadopago_price_yearly_usd: 47.9, // $47.90 USD
+        stripe_price_id_monthly: process.env.STRIPE_PRICE_ID_MONTHLY || "price_1Syif3D9BNQ52nHRE7qngWUu",
+        stripe_price_id_yearly: process.env.STRIPE_PRICE_ID_YEARLY || "price_1Syig1D9BNQ52nHRtvvanYpY",
+        wompi_price_in_cents_monthly: process.env.WOMPI_PRICE_IN_CENTS_MONTHLY ? Number(process.env.WOMPI_PRICE_IN_CENTS_MONTHLY) : 1836000,
+        wompi_price_in_cents_yearly: process.env.WOMPI_PRICE_IN_CENTS_YEARLY ? Number(process.env.WOMPI_PRICE_IN_CENTS_YEARLY) : 19000000,
+        mercadopago_price_monthly: process.env.MERCADOPAGO_PRICE_MONTHLY ? Number(process.env.MERCADOPAGO_PRICE_MONTHLY) : 18360,
+        mercadopago_price_yearly: process.env.MERCADOPAGO_PRICE_YEARLY ? Number(process.env.MERCADOPAGO_PRICE_YEARLY) : 190000,
+        mercadopago_price_monthly_usd: process.env.MERCADOPAGO_PRICE_MONTHLY_USD ? Number(process.env.MERCADOPAGO_PRICE_MONTHLY_USD) : 4.99,
+        mercadopago_price_yearly_usd: process.env.MERCADOPAGO_PRICE_YEARLY_USD ? Number(process.env.MERCADOPAGO_PRICE_YEARLY_USD) : 47.9,
       },
     },
   },
