@@ -2,6 +2,8 @@ const cron = require("node-cron");
 const User = require("../models/User");
 const logger = require("../utils/logger");
 const EmailService = require("./EmailService");
+const MercadoPagoService = require("./MercadoPagoService");
+const PLAN_CONFIG = require("../config/plans");
 
 const checkExpiredWompiSubscriptions = async () => {
   logger.info("Ejecutando verificación de suscripciones Wompi expiradas...");
@@ -93,12 +95,60 @@ const checkUpcomingWompiExpirations = async () => {
   }
 };
 
+const checkPromoExpirations = async () => {
+  logger.info("Verificando expiración de precios promocionales...");
+  try {
+    // Buscar usuarios Premium con promo vencida
+    const users = await User.find({
+      planLevel: "premium",
+      promoEndsAt: { $lt: new Date(), $ne: null },
+      // Eliminamos el filtro de regex para incluir Wompi y pagos únicos
+    });
+
+    const monthlyPrice = PLAN_CONFIG.subscription_plans.premium.pricing_hooks.mercadopago_price_monthly_original || PLAN_CONFIG.subscription_plans.premium.pricing_hooks.mercadopago_price_monthly;
+    const yearlyPrice = PLAN_CONFIG.subscription_plans.premium.pricing_hooks.mercadopago_price_yearly_original || PLAN_CONFIG.subscription_plans.premium.pricing_hooks.mercadopago_price_yearly;
+
+    for (const user of users) {
+      // Solo si es suscripción automática de Mercado Pago intentamos actualizar el precio en la API
+      if (user.subscriptionId && user.subscriptionId.startsWith("mp_sub_")) {
+        const subscriptionId = user.subscriptionId.replace("mp_sub_", "");
+        try {
+          const sub = await MercadoPagoService.getPreApproval(subscriptionId);
+          
+          if (sub.status === "authorized" || sub.status === "pending") {
+            const frequency = sub.auto_recurring.frequency;
+            const targetPrice = (frequency === 12) ? yearlyPrice : monthlyPrice;
+            const currentPrice = sub.auto_recurring.transaction_amount;
+
+            if (currentPrice !== targetPrice) {
+              logger.info(`Fin de promo para ${user.email}. Actualizando precio MP: ${currentPrice} -> ${targetPrice}`);
+              await MercadoPagoService.updateSubscription(subscriptionId, targetPrice);
+            }
+          }
+        } catch (error) {
+          logger.error(`Error actualizando precio post-promo para ${user._id}`, { error: error.message });
+        }
+        
+        // Pausa para evitar rate limit de MP (solo necesaria si llamamos a su API)
+        await new Promise(r => setTimeout(r, 500));
+      }
+      
+      // Para TODOS (Wompi, MP, Stripe), limpiamos la fecha de promo vencida
+      user.promoEndsAt = undefined;
+      await user.save();
+    }
+  } catch (error) {
+    logger.error("Error en cron job de promos", { error: error.message });
+  }
+};
+
 const initScheduledJobs = () => {
   // Ejecutar todos los días a las 00:00 (Medianoche)
   // Formato cron: min hora día mes día_semana
   cron.schedule("0 0 * * *", async () => {
     await checkExpiredWompiSubscriptions();
     await checkUpcomingWompiExpirations();
+    await checkPromoExpirations();
   });
   
   logger.info("Motor de tareas programadas (Cron) inicializado.");

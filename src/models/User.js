@@ -9,6 +9,7 @@ const UserSchema = new mongoose.Schema({
   subscriptionStatus: { type: String }, // active, cancelled, expired
   lastPaymentDate: { type: Date },
   planInterval: { type: String, enum: ["month", "year"] },
+  promoEndsAt: { type: Date }, // Fecha fin de precio promocional
   password: { type: String },
 
   // Nivel del plan actual (mapeado a las claves del JSON: 'guest', 'freemium', 'premium')

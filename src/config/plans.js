@@ -98,6 +98,7 @@ const PLAN_CONFIG = {
         mercadopago_price_monthly_original: process.env.MERCADOPAGO_PRICE_MONTHLY_ORIGINAL ? Number(process.env.MERCADOPAGO_PRICE_MONTHLY_ORIGINAL) : undefined,
         mercadopago_price_yearly_original: process.env.MERCADOPAGO_PRICE_YEARLY_ORIGINAL ? Number(process.env.MERCADOPAGO_PRICE_YEARLY_ORIGINAL) : undefined,
         offer_end_date: process.env.OFFER_END_DATE,
+        offer_duration_months: process.env.OFFER_DURATION_MONTHS ? Number(process.env.OFFER_DURATION_MONTHS) : 0,
         mercadopago_price_monthly_usd: process.env.MERCADOPAGO_PRICE_MONTHLY_USD ? Number(process.env.MERCADOPAGO_PRICE_MONTHLY_USD) : 4.99,
         mercadopago_price_yearly_usd: process.env.MERCADOPAGO_PRICE_YEARLY_USD ? Number(process.env.MERCADOPAGO_PRICE_YEARLY_USD) : 47.9,
         mercadopago_price_monthly_usd_original: process.env.MERCADOPAGO_PRICE_MONTHLY_USD_ORIGINAL ? Number(process.env.MERCADOPAGO_PRICE_MONTHLY_USD_ORIGINAL) : undefined,

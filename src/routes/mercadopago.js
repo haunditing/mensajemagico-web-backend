@@ -68,17 +68,30 @@ router.post("/create_preference", async (req, res) => {
     // Lógica de expiración de oferta (Backend)
     const offerEndDate = premiumConfig.pricing_hooks.offer_end_date;
     let isOfferActive = true;
+    let durationToApply = 0;
 
-    if (offerEndDate) {
+    // 1. Verificar si el usuario ya tiene una promo activa (Prioridad Personal)
+    if (user.promoEndsAt && new Date() < user.promoEndsAt) {
+      isOfferActive = true;
+      logger.info(`[MercadoPago] Usuario tiene promo personal activa hasta ${user.promoEndsAt}`);
+    } 
+    // 2. Si no, verificar oferta global (Adquisición)
+    else if (offerEndDate) {
       const isoDateRegex = /^\d{4}-\d{2}-\d{2}$/;
       if (isoDateRegex.test(offerEndDate)) {
         const [year, month, day] = offerEndDate.split('-').map(Number);
         const expiryDate = new Date(year, month - 1, day, 23, 59, 59);
         if (new Date() > expiryDate) {
           isOfferActive = false;
-          logger.info(`[MercadoPago] Oferta expirada (Fin: ${offerEndDate}).`);
+          logger.info(`[MercadoPago] Oferta global expirada (Fin: ${offerEndDate}).`);
+        } else {
+          // Oferta válida, preparamos duración para guardarla en el webhook
+          durationToApply = premiumConfig.pricing_hooks.offer_duration_months || 0;
         }
       }
+    } else {
+      // Sin fecha límite configurada, asumimos precio estándar (sin promo especial de duración)
+      // O si el precio configurado YA es promocional indefinido.
     }
 
     if (country === "CO") {
@@ -134,6 +147,10 @@ router.post("/create_preference", async (req, res) => {
     }
 
     const idempotencyKey = crypto.randomUUID();
+    // Pasamos la duración en la referencia externa para que el webhook la procese
+    // Formato: userId|durationMonths
+    const externalReference = durationToApply > 0 ? `${userId}|${durationToApply}` : userId.toString();
+
     // Log de depuración para verificar los datos antes de enviar a MP
     logger.info("Iniciando creación de preferencia MP", {
       userId,
@@ -149,7 +166,7 @@ router.post("/create_preference", async (req, res) => {
       price,
       currency_id,
       payerEmail: user.email,
-      externalReference: userId.toString(),
+      externalReference,
       backUrl: `${clientUrl}/success`,
       frequency,
       frequencyType: "months",
@@ -194,17 +211,30 @@ router.post("/webhook", async (req, res) => {
     // --- CASO 1: SUSCRIPCIONES (PREAPPROVAL) ---
     if (type === "subscription_preapproval") {
       const subscription = await MercadoPagoService.getPreApproval(data.id);
-      const userId = subscription.external_reference;
+      const rawRef = subscription.external_reference;
 
-      if (!userId) return res.sendStatus(200);
+      if (!rawRef) return res.sendStatus(200);
+
+      const [userId, durationStr] = rawRef.split('|');
+      const duration = durationStr ? parseInt(durationStr) : 0;
+
+      const updateData = {
+        planLevel: "premium",
+        subscriptionId: `mp_sub_${subscription.id}`,
+        subscriptionStatus: "active",
+      };
+
+      // Si hay duración de promo, calculamos fecha fin
+      if (duration > 0) {
+        const promoEndsAt = new Date();
+        promoEndsAt.setMonth(promoEndsAt.getMonth() + duration);
+        updateData.promoEndsAt = promoEndsAt;
+        logger.info(`Promo aplicada para usuario ${userId}. Vence: ${promoEndsAt}`);
+      }
 
       if (subscription.status === "authorized") {
         // ACTIVAR PREMIUM
-        await User.findByIdAndUpdate(userId, {
-          planLevel: "premium",
-          subscriptionId: `mp_sub_${subscription.id}`,
-          subscriptionStatus: "active",
-        });
+        await User.findByIdAndUpdate(userId, updateData);
         logger.info(`Suscripción autorizada: ${userId}`);
       } else if (subscription.status === "cancelled") {
         // DEGRADAR A FREE
@@ -219,14 +249,26 @@ router.post("/webhook", async (req, res) => {
     // --- CASO 2: PAGOS INDIVIDUALES (PAYMENT) ---
     if (type === "payment") {
       const payment = await MercadoPagoService.getPayment(data.id);
-      const userId = payment.external_reference;
+      // Soporte para referencia simple o compuesta
+      const rawRef = payment.external_reference;
+      const parts = rawRef ? rawRef.split('|') : [];
+      const userId = parts[0];
+      const duration = parts[1] ? parseInt(parts[1]) : 0;
 
       if (payment.status === "approved" && userId) {
-        await User.findByIdAndUpdate(userId, {
+        const updateData = {
           planLevel: "premium",
           subscriptionId: `mp_pay_${payment.id}`,
           lastPaymentDate: new Date(),
-        });
+        };
+
+        if (duration > 0) {
+          const promoEndsAt = new Date();
+          promoEndsAt.setMonth(promoEndsAt.getMonth() + duration);
+          updateData.promoEndsAt = promoEndsAt;
+        }
+
+        await User.findByIdAndUpdate(userId, updateData);
         logger.info(`Pago único aprobado: ${userId}`);
       } else if (
         payment.status === "pending" ||

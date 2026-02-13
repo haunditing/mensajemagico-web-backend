@@ -49,16 +49,26 @@ router.post("/checkout", async (req, res) => {
     
     // Lógica de expiración de oferta (Backend)
     const offerEndDate = premiumConfig.pricing_hooks.offer_end_date;
+    const offerDuration = premiumConfig.pricing_hooks.offer_duration_months || 0;
     let isOfferActive = true;
+    let durationToApply = 0;
 
-    if (offerEndDate) {
+    // 1. Verificar si el usuario ya tiene una promo activa (Prioridad Personal)
+    if (user.promoEndsAt && new Date() < user.promoEndsAt) {
+      isOfferActive = true;
+      logger.info(`[Wompi] Usuario tiene promo personal activa hasta ${user.promoEndsAt}`);
+    } 
+    // 2. Si no, verificar oferta global
+    else if (offerEndDate) {
       const isoDateRegex = /^\d{4}-\d{2}-\d{2}$/;
       if (isoDateRegex.test(offerEndDate)) {
         const [year, month, day] = offerEndDate.split('-').map(Number);
         const expiryDate = new Date(year, month - 1, day, 23, 59, 59);
         if (new Date() > expiryDate) {
           isOfferActive = false;
-          logger.info(`[Wompi] Oferta expirada (Fin: ${offerEndDate}).`);
+          logger.info(`[Wompi] Oferta global expirada (Fin: ${offerEndDate}).`);
+        } else {
+          durationToApply = offerDuration;
         }
       }
     }
@@ -93,8 +103,8 @@ router.post("/checkout", async (req, res) => {
     }
 
     const currency = "COP";
-    // Incluimos el planId en la referencia para saber cuánto tiempo dar en el webhook
-    const reference = `TX-${userId}-${planId}-${Date.now()}`; 
+    // Incluimos el planId y la duración en la referencia
+    const reference = `TX-${userId}-${planId}-${durationToApply}-${Date.now()}`; 
 
     // Generar firma de integridad
     const signature = WompiService.generateCheckoutSignature(reference, amountInCents, currency);
@@ -142,22 +152,30 @@ router.post("/webhooks/wompi", async (req, res) => {
 
     // 2. Procesar solo transacciones aprobadas
     if (eventType === "transaction.updated" && transaction.status === "APPROVED") {
-      // Extraer datos de la referencia (formato: TX-{userId}-{planId}-{timestamp})
+      // Extraer datos de la referencia (formato: TX-{userId}-{planId}-{duration}-{timestamp})
       const parts = transaction.reference.split("-");
       const userId = parts[1];
       const planId = parts[2]; // 'premium_monthly' o 'premium_yearly'
+      const duration = parts[3] ? parseInt(parts[3]) : 0;
 
       if (userId) {
-        // 3. Actualizar usuario a PRO (Premium)
-        const updatedUser = await User.findByIdAndUpdate(userId, {
+        const updateData = {
           planLevel: "premium",
-          // Guardamos el ID de transacción de Wompi como referencia
           subscriptionId: `wompi_${transaction.id}`,
-          // Guardamos fecha y tipo para calcular la vigencia manualmente
           lastPaymentDate: new Date(),
-          // Guardamos 'year' o 'month' para saber cuándo vence
           planInterval: planId === "premium_yearly" ? "year" : "month"
-        }, { new: true });
+        };
+
+        // Si es una nueva adquisición con promo, guardamos la fecha fin
+        if (duration > 0) {
+          const promoEndsAt = new Date();
+          promoEndsAt.setMonth(promoEndsAt.getMonth() + duration);
+          updateData.promoEndsAt = promoEndsAt;
+          logger.info(`Promo Wompi aplicada para usuario ${userId}. Vence: ${promoEndsAt}`);
+        }
+
+        // 3. Actualizar usuario a PRO (Premium)
+        const updatedUser = await User.findByIdAndUpdate(userId, updateData, { new: true });
 
         if (updatedUser) {
           logger.info(`Usuario ${userId} actualizado a Premium vía Wompi`);
