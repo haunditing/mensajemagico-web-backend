@@ -27,6 +27,7 @@ const generate = async (aiConfig, data) => {
     preferredLexicon, // Recibimos el ADN Léxico
     grammaticalGender,
     intention,
+    avoidTopics, // Recibimos la lista de exclusión del historial
   } = data;
 
   // 1. GESTIÓN DE CACHÉ
@@ -73,6 +74,7 @@ ${intentionInstruction}
   1. **PROHIBICIÓN GEOGRÁFICA:** Queda estrictamente PROHIBIDO mencionar nombres de ciudades, monumentos, sitios turísticos o clichés de postales (ej. NO menciones Murallas, La Vitrola, coches de caballos, Getsemaní, Monserrate, etc.).
   2. **IDENTIDAD SENSORIAL:** Expresa la región a través del clima (brisa, calorcito, frío), el ritmo de vida o jerga sutil y orgánica (ej. para la Costa: "ajá", "bacán", "ya ni te acuerdas de uno").
   3. **FILTRO ANTI-ROBOT:** Si el mensaje parece un folleto de viajes o una escena de telenovela, descártalo y reintenta. Debe sonar como un mensaje de WhatsApp real.
+  ${avoidTopics ? `4. **ANTI-REPETICIÓN (MEMORIA A CORTO PLAZO):** El usuario ya ha mencionado recientemente: "${avoidTopics}". EVITA usar estas palabras o conceptos específicos en este nuevo mensaje para mantener la frescura.` : ""}
 
   ### CONTEXTO DEL USUARIO
   ### CONTEXTO DINÁMICO
@@ -141,6 +143,8 @@ ${intentionInstruction}
       model: selectedModel,
       grammaticalGender, // <-- Verificación explícita en el log
       relationship, // <-- Verificación explícita de la relación
+      avoidTopics, // <-- Verificación de la lista de exclusión
+      formatInstruction, // <-- Verificación de la instrucción de formato (Minificación)
       systemInstruction: isGemma ? "Injected in prompt" : systemInstructionText,
       userPrompt: promptText
     });
