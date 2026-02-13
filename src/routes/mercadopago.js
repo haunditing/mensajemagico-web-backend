@@ -65,23 +65,62 @@ router.post("/create_preference", async (req, res) => {
     const TRM = await getTRM(); // Obtiene la TRM dinámica con fallback
     let frequency = 1;
 
+    // Lógica de expiración de oferta (Backend)
+    const offerEndDate = premiumConfig.pricing_hooks.offer_end_date;
+    let isOfferActive = true;
+
+    if (offerEndDate) {
+      const isoDateRegex = /^\d{4}-\d{2}-\d{2}$/;
+      if (isoDateRegex.test(offerEndDate)) {
+        const [year, month, day] = offerEndDate.split('-').map(Number);
+        const expiryDate = new Date(year, month - 1, day, 23, 59, 59);
+        if (new Date() > expiryDate) {
+          isOfferActive = false;
+          logger.info(`[MercadoPago] Oferta expirada (Fin: ${offerEndDate}).`);
+        }
+      }
+    }
+
     if (country === "CO") {
       // --- CONCEPTO A: USUARIO LOCAL ---
       if (planId === "premium_yearly") {
-        price = premiumConfig.pricing_hooks.mercadopago_price_yearly;
+        if (!isOfferActive && premiumConfig.pricing_hooks.mercadopago_price_yearly_original) {
+          price = premiumConfig.pricing_hooks.mercadopago_price_yearly_original;
+          logger.info(`[MercadoPago] Restaurando precio original anual: ${price}`);
+        } else {
+          price = premiumConfig.pricing_hooks.mercadopago_price_yearly;
+        }
         title = "Suscripción Anual - MensajeMágico Premium";
         frequency = 12;
       } else {
-        price = premiumConfig.pricing_hooks.mercadopago_price_monthly;
+        if (!isOfferActive && premiumConfig.pricing_hooks.mercadopago_price_monthly_original) {
+          price = premiumConfig.pricing_hooks.mercadopago_price_monthly_original;
+          logger.info(`[MercadoPago] Restaurando precio original mensual: ${price}`);
+        } else {
+          price = premiumConfig.pricing_hooks.mercadopago_price_monthly;
+        }
         title = "Suscripción Mensual - MensajeMágico Premium";
       }
     } else {
       // --- CONCEPTO B: USUARIO INTERNACIONAL (Disfraz de USD a COP) ---
       // Convertimos el precio de USD a COP para que Mercado Pago lo procese
-      const priceInUsd =
-        planId === "premium_yearly"
-          ? premiumConfig.pricing_hooks.mercadopago_price_yearly_usd
-          : premiumConfig.pricing_hooks.mercadopago_price_monthly_usd;
+      let priceInUsd;
+
+      if (planId === "premium_yearly") {
+        if (!isOfferActive && premiumConfig.pricing_hooks.mercadopago_price_yearly_usd_original) {
+          priceInUsd = premiumConfig.pricing_hooks.mercadopago_price_yearly_usd_original;
+          logger.info(`[MercadoPago] Restaurando precio original anual USD: ${priceInUsd}`);
+        } else {
+          priceInUsd = premiumConfig.pricing_hooks.mercadopago_price_yearly_usd;
+        }
+      } else {
+        if (!isOfferActive && premiumConfig.pricing_hooks.mercadopago_price_monthly_usd_original) {
+          priceInUsd = premiumConfig.pricing_hooks.mercadopago_price_monthly_usd_original;
+          logger.info(`[MercadoPago] Restaurando precio original mensual USD: ${priceInUsd}`);
+        } else {
+          priceInUsd = premiumConfig.pricing_hooks.mercadopago_price_monthly_usd;
+        }
+      }
 
       // IMPORTANTE: Redondear a entero para COP para evitar errores de formato en MP
       price = Math.round(priceInUsd * TRM);
@@ -220,6 +259,22 @@ router.post("/webhook", async (req, res) => {
       body: req.body,
     });
     res.sendStatus(500); // Reintento en caso de error de servidor
+  }
+});
+
+// Ruta para actualizar el precio de una suscripción existente (Ej. Fin de oferta)
+router.put("/subscription/:id", async (req, res) => {
+  const { id } = req.params;
+  const { price } = req.body;
+
+  try {
+    // Nota: Mercado Pago puede notificar al usuario por email sobre el cambio de precio
+    const result = await MercadoPagoService.updateSubscription(id, price);
+    logger.info(`Suscripción MP ${id} actualizada a precio: ${price}`);
+    res.json({ message: "Precio actualizado correctamente", result });
+  } catch (error) {
+    logger.error("Error actualizando suscripción MP", { error: error.message });
+    res.status(500).json({ error: "No se pudo actualizar la suscripción", details: error.message });
   }
 });
 

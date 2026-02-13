@@ -121,6 +121,21 @@ const createSubscription = async ({
   });
 };
 
+const updateSubscription = async (id, price) => {
+  if (!id) throw new Error("ID de suscripción requerido");
+  if (!price || Number(price) <= 0) throw new Error("Precio inválido");
+
+  const preApproval = new PreApproval(client);
+  return await preApproval.update({
+    id,
+    body: {
+      auto_recurring: {
+        transaction_amount: Number(price),
+      },
+    },
+  });
+};
+
 module.exports = {
   createPreference,
   getPayment,
@@ -128,4 +143,5 @@ module.exports = {
   searchPayment,
   cancelPreApproval,
   createSubscription,
+  updateSubscription,
 };

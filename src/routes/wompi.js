@@ -10,6 +10,10 @@ const PLAN_CONFIG = require("../config/plans");
 router.post("/checkout", async (req, res) => {
   const { userId, planId } = req.body; // planId puede ser 'premium_monthly' o 'premium_yearly'
 
+  if (!planId) {
+    return res.status(400).json({ error: "El parámetro planId es obligatorio" });
+  }
+
   // Determinar la URL base para el retorno (redirectUrl)
   let clientUrl = process.env.CLIENT_URL || "https://www.mensajemagico.com";
 
@@ -33,24 +37,49 @@ router.post("/checkout", async (req, res) => {
     const isYearly = planId === "premium_yearly";
 
     if (!isYearly && planId !== "premium_monthly") {
-      logger.warn(`Plan desconocido recibido: "${planId}". Usando precio mensual por defecto.`);
+      logger.warn(`Plan desconocido recibido: "${planId}". Rechazando solicitud.`);
+      return res.status(400).json({ error: "Plan no válido" });
     }
 
     const mpKey = isYearly ? "mercadopago_price_yearly" : "mercadopago_price_monthly";
+    const mpOriginalKey = isYearly ? "mercadopago_price_yearly_original" : "mercadopago_price_monthly_original";
     const wompiKey = isYearly ? "wompi_price_in_cents_yearly" : "wompi_price_in_cents_monthly";
 
     let amountInCents;
+    
+    // Lógica de expiración de oferta (Backend)
+    const offerEndDate = premiumConfig.pricing_hooks.offer_end_date;
+    let isOfferActive = true;
 
-    // Prioridad 1: Configuración específica de Wompi
-    // Verificamos explícitamente que no sea undefined/null (para permitir valor 0 si fuera necesario)
-    if (premiumConfig.pricing_hooks[wompiKey] !== undefined && premiumConfig.pricing_hooks[wompiKey] !== null) {
-      amountInCents = premiumConfig.pricing_hooks[wompiKey];
-      logger.info(`[Wompi] Usando precio específico de Wompi: ${amountInCents} centavos`);
-    } else if (premiumConfig.pricing_hooks[mpKey] !== undefined && premiumConfig.pricing_hooks[mpKey] !== null) {
-      // Prioridad 2: Usar el precio de MercadoPago (COP) como fallback para asegurar paridad
-      const mpPrice = premiumConfig.pricing_hooks[mpKey];
-      amountInCents = Math.round(mpPrice * 100);
-      logger.info(`[Wompi] Usando precio base de MercadoPago: ${mpPrice} COP -> ${amountInCents} centavos`);
+    if (offerEndDate) {
+      const isoDateRegex = /^\d{4}-\d{2}-\d{2}$/;
+      if (isoDateRegex.test(offerEndDate)) {
+        const [year, month, day] = offerEndDate.split('-').map(Number);
+        const expiryDate = new Date(year, month - 1, day, 23, 59, 59);
+        if (new Date() > expiryDate) {
+          isOfferActive = false;
+          logger.info(`[Wompi] Oferta expirada (Fin: ${offerEndDate}).`);
+        }
+      }
+    }
+
+    // Si la oferta expiró y tenemos un precio original, lo usamos con prioridad absoluta
+    if (!isOfferActive && premiumConfig.pricing_hooks[mpOriginalKey]) {
+      const originalPrice = premiumConfig.pricing_hooks[mpOriginalKey];
+      amountInCents = Math.round(originalPrice * 100);
+      logger.info(`[Wompi] Restaurando precio original (${mpOriginalKey}): ${originalPrice} COP -> ${amountInCents} centavos`);
+    } else {
+      // Si la oferta sigue activa O no hay precio original definido, usamos la lógica estándar
+      // Prioridad 1: Configuración específica de Wompi
+      if (premiumConfig.pricing_hooks[wompiKey] !== undefined && premiumConfig.pricing_hooks[wompiKey] !== null) {
+        amountInCents = premiumConfig.pricing_hooks[wompiKey];
+        logger.info(`[Wompi] Usando precio específico (${wompiKey}): ${amountInCents} centavos`);
+      } else if (premiumConfig.pricing_hooks[mpKey] !== undefined && premiumConfig.pricing_hooks[mpKey] !== null) {
+        // Prioridad 2: Usar el precio de MercadoPago (COP) como fallback para asegurar paridad
+        const mpPrice = premiumConfig.pricing_hooks[mpKey];
+        amountInCents = Math.round(mpPrice * 100);
+        logger.info(`[Wompi] Fallback a precio base MP (${mpKey}): ${mpPrice} COP -> ${amountInCents} centavos`);
+      }
     }
     
     // Asegurar que sea entero para evitar errores de firma con decimales
@@ -64,7 +93,8 @@ router.post("/checkout", async (req, res) => {
     }
 
     const currency = "COP";
-    const reference = `TX-${userId}-${Date.now()}`; // Referencia única
+    // Incluimos el planId en la referencia para saber cuánto tiempo dar en el webhook
+    const reference = `TX-${userId}-${planId}-${Date.now()}`; 
 
     // Generar firma de integridad
     const signature = WompiService.generateCheckoutSignature(reference, amountInCents, currency);
@@ -112,16 +142,21 @@ router.post("/webhooks/wompi", async (req, res) => {
 
     // 2. Procesar solo transacciones aprobadas
     if (eventType === "transaction.updated" && transaction.status === "APPROVED") {
-      // Extraer userId de la referencia (formato: TX-{userId}-{timestamp})
+      // Extraer datos de la referencia (formato: TX-{userId}-{planId}-{timestamp})
       const parts = transaction.reference.split("-");
       const userId = parts[1];
+      const planId = parts[2]; // 'premium_monthly' o 'premium_yearly'
 
       if (userId) {
         // 3. Actualizar usuario a PRO (Premium)
         const updatedUser = await User.findByIdAndUpdate(userId, {
           planLevel: "premium",
           // Guardamos el ID de transacción de Wompi como referencia
-          subscriptionId: `wompi_${transaction.id}` 
+          subscriptionId: `wompi_${transaction.id}`,
+          // Guardamos fecha y tipo para calcular la vigencia manualmente
+          lastPaymentDate: new Date(),
+          // Guardamos 'year' o 'month' para saber cuándo vence
+          planInterval: planId === "premium_yearly" ? "year" : "month"
         }, { new: true });
 
         if (updatedUser) {

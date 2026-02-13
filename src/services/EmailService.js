@@ -38,4 +38,34 @@ const sendPasswordResetEmail = async (to, resetUrl) => {
   }
 };
 
-module.exports = { sendPasswordResetEmail };
+const sendSubscriptionExpirationWarning = async (to, daysLeft, renewalDate) => {
+  // Manejo de múltiples URLs en CLIENT_URL para obtener la base correcta
+  const baseUrl = process.env.CLIENT_URL ? process.env.CLIENT_URL.split(',')[0] : "https://www.mensajemagico.com";
+
+  const mailOptions = {
+    from: `"Soporte MensajeMágico" <${process.env.EMAIL_USER}>`,
+    to,
+    subject: "Tu suscripción Premium está por vencer - MensajeMágico",
+    html: `
+      <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
+        <h2 style="color: #F59E0B; text-align: center;">Tu magia está por expirar</h2>
+        <p>Hola,</p>
+        <p>Te recordamos que tu suscripción Premium de MensajeMágico finalizará en <strong>${daysLeft} días</strong> (el ${renewalDate}).</p>
+        <p>Para no perder acceso a tus tonos exclusivos, historial y funciones avanzadas, por favor renueva tu plan.</p>
+        <div style="text-align: center; margin: 30px 0;">
+          <a href="${baseUrl}/pricing" style="background-color: #4F46E5; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold;">Renovar Ahora</a>
+        </div>
+      </div>
+    `,
+  };
+
+  try {
+    await transporter.sendMail(mailOptions);
+    logger.info(`Email de advertencia de expiración enviado a ${to}`);
+  } catch (error) {
+    logger.error("Error enviando email de advertencia", { error });
+    // Importante: No lanzamos el error para que el cron job continúe con los siguientes usuarios
+  }
+};
+
+module.exports = { sendPasswordResetEmail, sendSubscriptionExpirationWarning };

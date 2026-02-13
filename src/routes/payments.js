@@ -180,6 +180,24 @@ router.get("/subscription-status", async (req, res) => {
              subscriptionInfo = { status: 'active', provider: 'mercadopago' };
           }
         }
+      } else if (user.subscriptionId.startsWith("wompi_")) {
+        // Lógica Wompi: Pago único con duración manual
+        const lastPayment = user.lastPaymentDate || new Date();
+        const renewalDate = new Date(lastPayment);
+        
+        // Sumar tiempo según el plan guardado (o 30 días por defecto)
+        if (user.planInterval === "year") {
+          renewalDate.setFullYear(renewalDate.getFullYear() + 1);
+        } else {
+          renewalDate.setDate(renewalDate.getDate() + 30);
+        }
+
+        subscriptionInfo = {
+          status: new Date() < renewalDate ? "active" : "expired",
+          renewalDate: renewalDate,
+          cancelAtPeriodEnd: true, // Wompi no renueva solo, así que siempre "termina" al final
+          provider: "wompi"
+        }
       } else {
         // Lógica original de Stripe
         const sub = await stripe.subscriptions.retrieve(user.subscriptionId);
@@ -243,6 +261,13 @@ router.post("/cancel-subscription", async (req, res) => {
           return res.status(500).json({ error: "Error al cancelar la suscripción" });
         }
       }
+    } else if (user.subscriptionId.startsWith("wompi_")) {
+      // Wompi no tiene recurrencia automática en este modo, así que no hay nada que cancelar en la pasarela.
+      // Simplemente informamos al usuario que su plan terminará en la fecha prevista.
+      return res.json({
+        message: "Tu plan Wompi no tiene renovación automática. Finalizará en la fecha indicada.",
+        cancelAt: new Date() // Fecha informativa
+      });
     }
 
     const subscription = await stripe.subscriptions.update(user.subscriptionId, {

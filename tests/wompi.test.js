@@ -76,7 +76,7 @@ describe("Wompi Integration Tests", () => {
           premium: {
             pricing_hooks: {
               // wompi_price_in_cents_monthly: undefined, // Simular ausencia
-              mercadopago_price_monthly: 20000, // 20,000 COP
+              mercadopago_price_monthly: 18360, // 18,360 COP (Precio Real)
             },
           },
         },
@@ -110,7 +110,7 @@ describe("Wompi Integration Tests", () => {
         .send({ userId: mockUserId, planId: "premium_monthly" });
 
       expect(res.status).toBe(200);
-      expect(res.body.amountInCents).toBe(2000000); // 20000 * 100
+      expect(res.body.amountInCents).toBe(1836000); // 18360 * 100
       expect(res.body.signature).toBe("fallback_signature");
     });
   });

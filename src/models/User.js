@@ -6,6 +6,9 @@ const UserSchema = new mongoose.Schema({
   stripeCustomerId: { type: String },
   subscriptionId: { type: String }, // ID de la suscripción activa en Stripe
   role: { type: String, default: "user" },
+  subscriptionStatus: { type: String }, // active, cancelled, expired
+  lastPaymentDate: { type: Date },
+  planInterval: { type: String, enum: ["month", "year"] },
   password: { type: String },
 
   // Nivel del plan actual (mapeado a las claves del JSON: 'guest', 'freemium', 'premium')
