@@ -67,16 +67,12 @@ router.post("/create_preference", async (req, res) => {
 
     // Lógica de expiración de oferta (Backend)
     const offerEndDate = premiumConfig.pricing_hooks.offer_end_date;
+    const offerDuration = premiumConfig.pricing_hooks.offer_duration_months || 0;
     let isOfferActive = true;
     let durationToApply = 0;
 
-    // 1. Verificar si el usuario ya tiene una promo activa (Prioridad Personal)
-    if (user.promoEndsAt && new Date() < user.promoEndsAt) {
-      isOfferActive = true;
-      logger.info(`[MercadoPago] Usuario tiene promo personal activa hasta ${user.promoEndsAt}`);
-    } 
-    // 2. Si no, verificar oferta global (Adquisición)
-    else if (offerEndDate) {
+    // 1. Verificar expiración por fecha global
+    if (offerEndDate) {
       const isoDateRegex = /^\d{4}-\d{2}-\d{2}$/;
       if (isoDateRegex.test(offerEndDate)) {
         const [year, month, day] = offerEndDate.split('-').map(Number);
@@ -84,14 +80,19 @@ router.post("/create_preference", async (req, res) => {
         if (new Date() > expiryDate) {
           isOfferActive = false;
           logger.info(`[MercadoPago] Oferta global expirada (Fin: ${offerEndDate}).`);
-        } else {
-          // Oferta válida, preparamos duración para guardarla en el webhook
-          durationToApply = premiumConfig.pricing_hooks.offer_duration_months || 0;
         }
       }
-    } else {
-      // Sin fecha límite configurada, asumimos precio estándar (sin promo especial de duración)
-      // O si el precio configurado YA es promocional indefinido.
+    }
+
+    // 2. Verificar si el usuario ya tiene una promo activa (Prioridad Personal - Override)
+    if (user.promoEndsAt && new Date() < user.promoEndsAt) {
+      isOfferActive = true;
+      logger.info(`[MercadoPago] Usuario tiene promo personal activa hasta ${user.promoEndsAt}`);
+    }
+
+    // 3. Determinar duración a aplicar
+    if (isOfferActive) {
+      durationToApply = offerDuration;
     }
 
     if (country === "CO") {
@@ -213,6 +214,8 @@ router.post("/webhook", async (req, res) => {
       const subscription = await MercadoPagoService.getPreApproval(data.id);
       const rawRef = subscription.external_reference;
 
+      logger.info(`[MercadoPago Webhook] PreApproval Reference received: ${rawRef}`);
+
       if (!rawRef) return res.sendStatus(200);
 
       const [userId, durationStr] = rawRef.split('|');
@@ -226,8 +229,15 @@ router.post("/webhook", async (req, res) => {
 
       // Si hay duración de promo, calculamos fecha fin
       if (duration > 0) {
-        const promoEndsAt = new Date();
-        promoEndsAt.setMonth(promoEndsAt.getMonth() + duration);
+        const now = new Date();
+        const promoEndsAt = new Date(now);
+        promoEndsAt.setMonth(now.getMonth() + duration);
+        
+        // Ajuste para meses con menos días (ej. 31 Ene + 1 mes -> 28/29 Feb)
+        if (promoEndsAt.getDate() !== now.getDate()) {
+          promoEndsAt.setDate(0);
+        }
+        
         updateData.promoEndsAt = promoEndsAt;
         logger.info(`Promo aplicada para usuario ${userId}. Vence: ${promoEndsAt}`);
       }
@@ -251,6 +261,9 @@ router.post("/webhook", async (req, res) => {
       const payment = await MercadoPagoService.getPayment(data.id);
       // Soporte para referencia simple o compuesta
       const rawRef = payment.external_reference;
+      
+      logger.info(`[MercadoPago Webhook] Payment Reference received: ${rawRef}`);
+
       const parts = rawRef ? rawRef.split('|') : [];
       const userId = parts[0];
       const duration = parts[1] ? parseInt(parts[1]) : 0;
@@ -263,8 +276,13 @@ router.post("/webhook", async (req, res) => {
         };
 
         if (duration > 0) {
-          const promoEndsAt = new Date();
-          promoEndsAt.setMonth(promoEndsAt.getMonth() + duration);
+          const now = new Date();
+          const promoEndsAt = new Date(now);
+          promoEndsAt.setMonth(now.getMonth() + duration);
+          
+          if (promoEndsAt.getDate() !== now.getDate()) {
+            promoEndsAt.setDate(0);
+          }
           updateData.promoEndsAt = promoEndsAt;
         }
 

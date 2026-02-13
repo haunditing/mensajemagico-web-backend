@@ -175,8 +175,13 @@ router.post("/webhooks/wompi", async (req, res) => {
 
         // Si es una nueva adquisición con promo, guardamos la fecha fin
         if (duration > 0) {
-          const promoEndsAt = new Date();
-          promoEndsAt.setMonth(promoEndsAt.getMonth() + duration);
+          const now = new Date();
+          const promoEndsAt = new Date(now);
+          promoEndsAt.setMonth(now.getMonth() + duration);
+          
+          if (promoEndsAt.getDate() !== now.getDate()) {
+            promoEndsAt.setDate(0);
+          }
           updateData.promoEndsAt = promoEndsAt;
           logger.info(`Promo Wompi aplicada para usuario ${userId}. Vence: ${promoEndsAt}`);
         }

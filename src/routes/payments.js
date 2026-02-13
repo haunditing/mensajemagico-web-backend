@@ -189,7 +189,13 @@ router.get("/subscription-status", async (req, res) => {
         if (user.planInterval === "year") {
           renewalDate.setFullYear(renewalDate.getFullYear() + 1);
         } else {
-          renewalDate.setDate(renewalDate.getDate() + 30);
+          // Usar setMonth para consistencia con la duración de la promo
+          renewalDate.setMonth(renewalDate.getMonth() + 1);
+          
+          // Ajuste para meses con menos días (ej. 31 Ene + 1 mes -> 28/29 Feb)
+          if (renewalDate.getDate() !== lastPayment.getDate()) {
+            renewalDate.setDate(0);
+          }
         }
 
         subscriptionInfo = {
