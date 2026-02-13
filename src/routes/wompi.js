@@ -8,7 +8,7 @@ const PLAN_CONFIG = require("../config/plans");
 // 1. Endpoint para iniciar transacción (Checkout)
 // El frontend llama aquí para obtener la firma y referencia antes de abrir el widget
 router.post("/checkout", async (req, res) => {
-  const { userId, planId } = req.body; // planId puede ser 'premium_monthly' o 'premium_yearly'
+  const { userId, planId, amount } = req.body; // Recibimos 'amount' explícito del frontend
 
   if (!planId) {
     return res.status(400).json({ error: "El parámetro planId es obligatorio" });
@@ -46,20 +46,15 @@ router.post("/checkout", async (req, res) => {
     const wompiKey = isYearly ? "wompi_price_in_cents_yearly" : "wompi_price_in_cents_monthly";
 
     let amountInCents;
-    
-    // Lógica de expiración de oferta (Backend)
+    let durationToApply = 0;
+
+    // --- 1. Lógica Centralizada de Estado de Oferta ---
     const offerEndDate = premiumConfig.pricing_hooks.offer_end_date;
     const offerDuration = premiumConfig.pricing_hooks.offer_duration_months || 0;
     let isOfferActive = true;
-    let durationToApply = 0;
 
-    // 1. Verificar si el usuario ya tiene una promo activa (Prioridad Personal)
-    if (user.promoEndsAt && new Date() < user.promoEndsAt) {
-      isOfferActive = true;
-      logger.info(`[Wompi] Usuario tiene promo personal activa hasta ${user.promoEndsAt}`);
-    } 
-    // 2. Si no, verificar oferta global
-    else if (offerEndDate) {
+    // A. Verificar expiración por fecha global
+    if (offerEndDate) {
       const isoDateRegex = /^\d{4}-\d{2}-\d{2}$/;
       if (isoDateRegex.test(offerEndDate)) {
         const [year, month, day] = offerEndDate.split('-').map(Number);
@@ -67,28 +62,40 @@ router.post("/checkout", async (req, res) => {
         if (new Date() > expiryDate) {
           isOfferActive = false;
           logger.info(`[Wompi] Oferta global expirada (Fin: ${offerEndDate}).`);
-        } else {
-          durationToApply = offerDuration;
         }
       }
     }
 
-    // Si la oferta expiró y tenemos un precio original, lo usamos con prioridad absoluta
-    if (!isOfferActive && premiumConfig.pricing_hooks[mpOriginalKey]) {
-      const originalPrice = premiumConfig.pricing_hooks[mpOriginalKey];
-      amountInCents = Math.round(originalPrice * 100);
-      logger.info(`[Wompi] Restaurando precio original (${mpOriginalKey}): ${originalPrice} COP -> ${amountInCents} centavos`);
+    // B. Verificar si el usuario tiene promo personal (Override de expiración)
+    if (user.promoEndsAt && new Date() < user.promoEndsAt) {
+      isOfferActive = true;
+      logger.info(`[Wompi] Usuario tiene promo personal activa. Aplicando oferta.`);
+    }
+
+    // --- 2. Determinación de Precio y Duración ---
+    
+    // CASO A: Usar precio del frontend (Prioridad)
+    if (amount && !isNaN(amount) && amount > 0) {
+      amountInCents = Math.round(Number(amount) * 100);
+      // Solo aplicamos la duración si la oferta sigue activa según nuestras reglas
+      durationToApply = isOfferActive ? offerDuration : 0;
+      logger.info(`[Wompi] Precio cliente: ${amountInCents} centavos. Duración aplicada: ${durationToApply} meses.`);
     } else {
-      // Si la oferta sigue activa O no hay precio original definido, usamos la lógica estándar
-      // Prioridad 1: Configuración específica de Wompi
-      if (premiumConfig.pricing_hooks[wompiKey] !== undefined && premiumConfig.pricing_hooks[wompiKey] !== null) {
-        amountInCents = premiumConfig.pricing_hooks[wompiKey];
-        logger.info(`[Wompi] Usando precio específico (${wompiKey}): ${amountInCents} centavos`);
-      } else if (premiumConfig.pricing_hooks[mpKey] !== undefined && premiumConfig.pricing_hooks[mpKey] !== null) {
-        // Prioridad 2: Usar el precio de MercadoPago (COP) como fallback para asegurar paridad
-        const mpPrice = premiumConfig.pricing_hooks[mpKey];
-        amountInCents = Math.round(mpPrice * 100);
-        logger.info(`[Wompi] Fallback a precio base MP (${mpKey}): ${mpPrice} COP -> ${amountInCents} centavos`);
+      // CASO B: Fallback a cálculo del backend
+      // Si la oferta expiró y tenemos un precio original, lo usamos con prioridad absoluta
+      if (!isOfferActive && premiumConfig.pricing_hooks[mpOriginalKey]) {
+        const originalPrice = premiumConfig.pricing_hooks[mpOriginalKey];
+        amountInCents = Math.round(originalPrice * 100);
+        logger.info(`[Wompi] Restaurando precio original (${mpOriginalKey}): ${originalPrice} COP -> ${amountInCents} centavos`);
+      } else {
+        // Si la oferta sigue activa O no hay precio original definido, usamos la lógica estándar
+        durationToApply = offerDuration; // Aplicamos duración porque estamos en rama de oferta activa
+        if (premiumConfig.pricing_hooks[wompiKey] !== undefined && premiumConfig.pricing_hooks[wompiKey] !== null) {
+          amountInCents = premiumConfig.pricing_hooks[wompiKey];
+        } else if (premiumConfig.pricing_hooks[mpKey] !== undefined && premiumConfig.pricing_hooks[mpKey] !== null) {
+          const mpPrice = premiumConfig.pricing_hooks[mpKey];
+          amountInCents = Math.round(mpPrice * 100);
+        }
       }
     }
     
