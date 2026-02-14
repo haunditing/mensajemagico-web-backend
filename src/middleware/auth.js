@@ -15,7 +15,6 @@ const verifyToken = (req, res, next) => {
       console.error("❌ Error al verificar JWT:", err.message);
       return res.status(403).json({ message: "Token inválido o expirado" });
     }
-    //console.log("✅ Contenido del Token:", decoded);
     req.user = decoded;
     next();
   });
@@ -26,12 +25,9 @@ const isAdmin = (req, res, next) => {
   if (req.user && req.user.role === "admin") {
     next();
   } else {
-    console.log("🚫 Acceso denegado. Usuario no es admin:", req.user);
-    res
-      .status(403)
-      .json({
-        message: "Acceso denegado: Se requieren permisos de administrador",
-      });
+    res.status(403).json({
+      message: "Acceso denegado: Se requieren permisos de administrador",
+    });
   }
 };
 

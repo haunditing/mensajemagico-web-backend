@@ -135,12 +135,12 @@ const calculateFriction = (original, edited) => {
       } else {
         matrix[i][j] = Math.min(
           matrix[i - 1][j - 1] + 1,
-          Math.min(matrix[i][j - 1] + 1, matrix[i - 1][j] + 1)
+          Math.min(matrix[i][j - 1] + 1, matrix[i - 1][j] + 1),
         );
       }
     }
   }
-  
+
   const distance = matrix[b.length][a.length];
   const maxLength = Math.max(a.length, b.length);
   return Math.round((distance / maxLength) * 100);
@@ -148,11 +148,17 @@ const calculateFriction = (original, edited) => {
 
 // Extracción de ADN Léxico (Palabras nuevas que no estaban en el original)
 const extractLexicalDNA = (original, edited) => {
-  const clean = (text) => text.toLowerCase().replace(/[^\w\sáéíóúñü]/gi, '').split(/\s+/);
+  const clean = (text) =>
+    text
+      .toLowerCase()
+      .replace(/[^\w\sáéíóúñü]/gi, "")
+      .split(/\s+/);
   const originalSet = new Set(clean(original));
   const editedArr = clean(edited);
   // Filtramos palabras cortas (conectores) y devolvemos solo las nuevas
-  return [...new Set(editedArr.filter(w => !originalSet.has(w) && w.length > 3))];
+  return [
+    ...new Set(editedArr.filter((w) => !originalSet.has(w) && w.length > 3)),
+  ];
 };
 
 /**
@@ -224,7 +230,6 @@ const recordInteraction = async (
 
     await contact.save();
 
-    console.log(`grabo bien: ${contact}`)
     logger.info("Guardián: Salud actualizada mediante Embeddings", {
       contactId,
       newHealth: contact.relationalHealth,
@@ -236,4 +241,11 @@ const recordInteraction = async (
   }
 };
 
-module.exports = { getContext, recordInteraction, analyzeSentiment, extractStyle, calculateFriction, extractLexicalDNA };
+module.exports = {
+  getContext,
+  recordInteraction,
+  analyzeSentiment,
+  extractStyle,
+  calculateFriction,
+  extractLexicalDNA,
+};

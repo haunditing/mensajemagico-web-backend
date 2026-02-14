@@ -9,7 +9,10 @@ exports.getStreamLogs = async (req, res) => {
   try {
     const date = new Date().toISOString().split("T")[0];
     // VERIFICA: ¿Tu archivo empieza con 'application' o con 'transacciones'?
-    const logPath = path.join(__dirname, `../../logs/transacciones-${date}.log`);
+    const logPath = path.join(
+      __dirname,
+      `../../logs/transacciones-${date}.log`,
+    );
 
     if (!fs.existsSync(logPath)) return res.json([]);
 
@@ -48,7 +51,6 @@ exports.loginAdmin = async (req, res) => {
     const user = await User.findOne({ email });
 
     if (!user) {
-      console.log("Usuario no encontrado");
       return res.status(401).json({ message: "Credenciales inválidas" }); // Si falta el return/res, se queda colgado
     }
 
