@@ -149,4 +149,93 @@ router.post("/generate", getUser, async (req, res, next) => {
   }
 });
 
+router.post("/generate-stream", getUser, async (req, res) => {
+  let {
+    contactId,
+    occasion,
+    tone,
+    contextWords,
+    receivedText,
+    formatInstruction,
+    intention,
+    relationship,
+  } = req.body;
+
+  const user = req.user;
+
+  if (Array.isArray(contextWords)) {
+    contextWords = contextWords.join(", ");
+  }
+
+  try {
+    // 1. Validar acceso
+    PlanService.validateAccess(user, {
+      occasion,
+      tone,
+      contextWords,
+      intention,
+    });
+
+    const aiConfig = PlanService.getAIConfig(user.planLevel);
+
+    // 2. Contexto del Guardián
+    let guardianContext = {
+      relationalHealth: req.body.relationalHealth || 5,
+      snoozeCount: 0,
+      guardianMetadata: null,
+    };
+    if (contactId && user._id) {
+      const context = await GuardianService.getContext(user._id, contactId);
+      guardianContext = { ...guardianContext, ...context };
+    }
+
+    // 3. Preparar datos
+    const generationData = {
+      ...req.body,
+      contextWords,
+      planLevel: user.planLevel,
+      relationalHealth: guardianContext.relationalHealth,
+      snoozeCount: guardianContext.snoozeCount,
+      neutralMode: user.preferences?.neutralMode,
+      grammaticalGender: user.preferences?.grammaticalGender || req.body.grammaticalGender,
+      lastUserStyle: guardianContext.lastUserStyle,
+      preferredLexicon: guardianContext.preferredLexicon,
+    };
+
+    // Headers para streaming de texto (Solo si pasamos las validaciones)
+    res.setHeader("Content-Type", "text/plain; charset=utf-8");
+
+    // Fix para Safari/iOS: Enviar padding inicial (~1KB) para forzar el flush del buffer
+    res.write(" ".repeat(1024));
+
+    // 4. Iniciar Stream con Orquestador (Maneja Fallback 429/503 automáticamente)
+    const stream = AIOrchestrator.executeStreamWithFallback(
+      user.planLevel,
+      guardianContext.relationalHealth,
+      (modelOverride) => {
+         // Inyectamos el modelo seleccionado por el orquestador en los datos
+         return AIService.generateStream(aiConfig, { ...generationData, modelOverride });
+      }
+    );
+    
+    for await (const chunk of stream) {
+      res.write(chunk);
+    }
+
+    // Registrar consumo del usuario al finalizar el stream con éxito
+    if (user.incrementUsage) {
+      await user.incrementUsage();
+    }
+
+    res.end();
+  } catch (error) {
+    logger.error("Stream Error", error);
+    if (!res.headersSent) {
+      res.status(error.statusCode || 500).json({ error: error.message });
+    } else {
+      res.end();
+    }
+  }
+});
+
 module.exports = router;

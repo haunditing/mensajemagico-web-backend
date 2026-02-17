@@ -59,12 +59,15 @@ const executeWithFallback = async (
     return await apiCallFunction(strategy.model);
   } catch (error) {
     const isServiceUnavailable =
-      error.message?.includes("503") || error.status === 503;
+      error.message?.includes("503") || error.status === 503 ||
+      error.message?.includes("429") || error.status === 429 ||
+      error.statusCode === 503 || error.statusCode === 429 ||
+      error.message?.toLowerCase().includes("quota");
 
     // Si el error es saturación, activamos el plan de rescate
     if (isServiceUnavailable) {
       logger.warn(
-        `Orquestador: ${strategy.model} saturado (503). Activando Fallback.`,
+        `Orquestador: ${strategy.model} falló (503/429). Activando Fallback.`,
       );
 
       // El modelo de rescate por excelencia es Gemini 2.5 Flash por su alta disponibilidad
@@ -86,4 +89,52 @@ const executeWithFallback = async (
   }
 };
 
-module.exports = { executeWithFallback, MODELS };
+/**
+ * EJECUCIÓN DE STREAMING CON RESILIENCIA
+ * Envuelve el generador del servicio en una lógica de reintento transparente.
+ */
+const executeStreamWithFallback = async function* (
+  planLevel,
+  relationalHealth,
+  streamFactory // (model) => AsyncGenerator
+) {
+  const strategy = await getInitialStrategy(planLevel, relationalHealth);
+
+  try {
+    logger.info(`AIOrchestrator: Iniciando stream con ${strategy.model}`);
+    // Intentamos consumir el generador. Si falla al inicio (antes del primer yield), saltará al catch.
+    const stream = streamFactory(strategy.model);
+    for await (const chunk of stream) {
+      yield chunk;
+    }
+  } catch (error) {
+    const isServiceUnavailable =
+      error.message?.includes("503") || error.status === 503 ||
+      error.message?.includes("429") || error.status === 429 ||
+      error.statusCode === 503 || error.statusCode === 429 ||
+      error.message?.toLowerCase().includes("quota");
+
+    if (isServiceUnavailable) {
+      logger.warn(
+        `Orquestador Stream: ${strategy.model} falló (503/429). Activando Fallback.`,
+      );
+
+      const fallbackModel = MODELS.GEMINI_25;
+
+      try {
+        logger.info(`Orquestador Stream: Reintentando con modelo de rescate ${fallbackModel}`);
+        const fallbackStream = streamFactory(fallbackModel);
+        for await (const chunk of fallbackStream) {
+          yield chunk;
+        }
+      } catch (fallbackError) {
+        logger.error("Orquestador Stream: El modelo de rescate también falló.");
+        throw fallbackError;
+      }
+    } else {
+      throw error;
+    }
+  }
+};
+
+module.exports = { executeWithFallback, executeStreamWithFallback, MODELS };

@@ -9,7 +9,7 @@ const genAI = new GoogleGenerativeAI(process.env.AI_API_KEY);
 const responseCache = new Map();
 const CACHE_TTL_MS = 1000 * 60 * 60;
 
-const generate = async (aiConfig, data) => {
+const prepareRequest = (aiConfig, data) => {
   const {
     occasion,
     tone,
@@ -30,18 +30,6 @@ const generate = async (aiConfig, data) => {
     avoidTopics, // Recibimos la lista de exclusión del historial
     styleInstructions, // Recibimos las instrucciones dinámicas del Guardián (Filtro de Profundidad)
   } = data;
-
-  // 1. GESTIÓN DE CACHÉ
-  const cacheKey = crypto
-    .createHash("md5")
-    .update(JSON.stringify(data, Object.keys(data).sort()))
-    .digest("hex");
-
-  if (responseCache.has(cacheKey)) {
-    const { text, timestamp } = responseCache.get(cacheKey);
-    if (Date.now() - timestamp < CACHE_TTL_MS) return text;
-    responseCache.delete(cacheKey);
-  }
 
   // 2. CONSTRUCCIÓN DE CONTEXTO REGIONAL
   const regionalBoost = RegionalContextService.getRegionalBoost(
@@ -121,77 +109,76 @@ ${intentionInstruction}
     ${formatInstruction || ""}
   `.trim();
 
+  const selectedModel = modelOverride || aiConfig.model || "gemini-1.5-flash";
+  const isGemma = selectedModel.toLowerCase().includes("gemma");
+  
+  let model;
+  let finalPrompt;
+
+  if (isGemma) {
+    model = genAI.getGenerativeModel({ model: selectedModel });
+    finalPrompt = `[SYSTEM_RULES]\n${systemInstructionText}\n\n[USER_REQUEST]\n${promptText}`;
+  } else {
+    model = genAI.getGenerativeModel({
+      model: selectedModel,
+      systemInstruction: systemInstructionText,
+    });
+    finalPrompt = promptText;
+  }
+
+  // Configuración de seguridad
+  const safetySettings = [
+    { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_ONLY_HIGH" },
+    { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_ONLY_HIGH" },
+    { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_ONLY_HIGH" },
+    { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_ONLY_HIGH" },
+  ];
+
+  const generationConfig = {
+    temperature: aiConfig.temperature || 0.7,
+    topP: 0.95,
+    topK: 40,
+  };
+
+  return { model, finalPrompt, generationConfig, safetySettings, selectedModel, systemInstructionText, promptText };
+};
+
+const generate = async (aiConfig, data) => {
+  // 1. GESTIÓN DE CACHÉ
+  const cacheKey = crypto
+    .createHash("md5")
+    .update(JSON.stringify(data, Object.keys(data).sort()))
+    .digest("hex");
+
+  if (responseCache.has(cacheKey)) {
+    const { text, timestamp } = responseCache.get(cacheKey);
+    if (Date.now() - timestamp < CACHE_TTL_MS) return text;
+    responseCache.delete(cacheKey);
+  }
+
   try {
-    const selectedModel = modelOverride || aiConfig.model || "gemini-1.5-flash";
-
-    // 👈 SOLUCIÓN AL ERROR 400 (Compatibilidad Gemma)
-    // Gemma NO acepta 'systemInstruction'. Si es Gemma, inyectamos las reglas en el prompt.
-    const isGemma = selectedModel.toLowerCase().includes("gemma");
-
-    let model;
-    let finalPrompt;
-
-    if (isGemma) {
-      model = genAI.getGenerativeModel({ model: selectedModel });
-      finalPrompt = `[SYSTEM_RULES]\n${systemInstructionText}\n\n[USER_REQUEST]\n${promptText}`;
-    } else {
-      model = genAI.getGenerativeModel({
-        model: selectedModel,
-        systemInstruction: systemInstructionText,
-      });
-      finalPrompt = promptText;
-    }
+    const { model, finalPrompt, generationConfig, safetySettings, selectedModel, systemInstructionText, promptText } = prepareRequest(aiConfig, data);
 
     // --- LOGGING: Registro del Prompt enviado ---
     logger.info(`🤖 AI Request [${selectedModel}]`, {
       model: selectedModel,
-      grammaticalGender, // <-- Verificación explícita en el log
-      intention, // <-- Verificación de la intención
-      relationalHealth, // <-- Verificación de la salud relacional
-      relationship, // <-- Verificación explícita de la relación
-      avoidTopics, // <-- Verificación de la lista de exclusión
-      styleInstructions, // <-- Verificación de las instrucciones de estilo
-      formatInstruction, // <-- Verificación de la instrucción de formato (Minificación)
-      systemInstruction: isGemma ? "Injected in prompt" : systemInstructionText,
+      grammaticalGender: data.grammaticalGender,
+      intention: data.intention,
+      systemInstruction: selectedModel.toLowerCase().includes("gemma") ? "Injected in prompt" : systemInstructionText,
       userPrompt: promptText
     });
 
-    // 5. CONFIGURACIÓN DE GENERACIÓN Y SEGURIDAD
-    const generationConfig = {
-      temperature: aiConfig.temperature || 0.7,
-      topP: 0.95,
-      topK: 40,
-    };
-
-    // 1. Definir settings relajados
-    const safetySettings = [
-      {
-        category: "HARM_CATEGORY_HARASSMENT",
-        threshold: "BLOCK_ONLY_HIGH", // No bloquear en Medium (que es donde cae el romance)
-      },
-      {
-        category: "HARM_CATEGORY_HATE_SPEECH",
-        threshold: "BLOCK_ONLY_HIGH",
-      },
-      {
-        category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
-        threshold: "BLOCK_ONLY_HIGH",
-      },
-      {
-        category: "HARM_CATEGORY_DANGEROUS_CONTENT",
-        threshold: "BLOCK_ONLY_HIGH",
-      },
-    ];
-
     // 6. EJECUCIÓN
-    const result = await model.generateContent({
+    const result = await model.generateContentStream({
       contents: [{ role: "user", parts: [{ text: finalPrompt }] }],
       generationConfig,
       safetySettings,
     });
 
-    const response = await result.response;
-    const generatedText = response.text();
+    let generatedText = '';
+    for await (const chunk of result.stream) {
+      generatedText += chunk.text();
+    }
 
     // --- LOGGING: Registro de la Respuesta recibida ---
     logger.info(`✨ AI Response [${selectedModel}]`, {
@@ -216,8 +203,10 @@ ${intentionInstruction}
       stack: error.stack,
     });
 
+    const errorMessage = error.message?.toLowerCase() || "";
+
     // Si el error es de cuota (429), lo lanzamos para que el Controller active el fallback
-    if (error.message.includes("429") || error.message.includes("quota")) {
+    if (errorMessage.includes("429") || errorMessage.includes("quota") || errorMessage.includes("exhausted")) {
       const quotaError = new Error("QUOTA_EXCEEDED");
       quotaError.statusCode = 429;
       throw quotaError;
@@ -227,4 +216,35 @@ ${intentionInstruction}
   }
 };
 
-module.exports = { generate };
+const generateStream = async function* (aiConfig, data) {
+  try {
+    const { model, finalPrompt, generationConfig, safetySettings, selectedModel } = prepareRequest(aiConfig, data);
+
+    const result = await model.generateContentStream({
+      contents: [{ role: "user", parts: [{ text: finalPrompt }] }],
+      generationConfig,
+      safetySettings,
+    });
+
+    for await (const chunk of result.stream) {
+      const chunkText = chunk.text();
+      yield chunkText;
+    }
+
+    // Registrar uso del modelo
+    await SystemUsage.increment(selectedModel);
+
+  } catch (error) {
+    logger.error("Error en AIService Stream", { error: error.message });
+    
+    const errorMessage = error.message?.toLowerCase() || "";
+    if (errorMessage.includes("429") || errorMessage.includes("quota") || errorMessage.includes("exhausted")) {
+      const quotaError = new Error("QUOTA_EXCEEDED");
+      quotaError.statusCode = 429;
+      throw quotaError;
+    }
+    throw error;
+  }
+};
+
+module.exports = { generate, generateStream };
