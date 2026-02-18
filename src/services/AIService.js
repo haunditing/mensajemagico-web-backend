@@ -29,6 +29,9 @@ const prepareRequest = (aiConfig, data) => {
     intention,
     avoidTopics, // Recibimos la lista de exclusión del historial
     styleInstructions, // Recibimos las instrucciones dinámicas del Guardián (Filtro de Profundidad)
+    creativityLevel, // Nivel de creatividad calculado en el frontend
+    greetingMoment, // Momento del saludo (amanecer, tarde, ocaso, etc.)
+    apologyReason, // Motivo de la disculpa
   } = data;
 
   // 2. CONSTRUCCIÓN DE CONTEXTO REGIONAL
@@ -53,15 +56,51 @@ const prepareRequest = (aiConfig, data) => {
     }
   }
 
+  // 2.6. ADAPTACIÓN DE ENERGÍA (Modo Respuesta)
+  let energyInstruction = "";
+  if (receivedText && receivedText.length > 0) {
+    const receivedLength = receivedText.length;
+    const responseLength = receivedLength < 50 ? "muy breve y directa" : receivedLength < 150 ? "concisa" : "detallada y profunda";
+    energyInstruction = `\n  ### ADAPTACIÓN DE ENERGÍA (ESPEJO)\n  El usuario recibió un mensaje de ${receivedLength} caracteres. Tu respuesta debe ser **${responseLength}** para igualar la energía del interlocutor. No seas intenso si el otro fue seco.`;
+  }
+
+  // 2.7. COHERENCIA TEMPORAL (Para Saludos)
+  let timeInstruction = "";
+  if (greetingMoment) {
+    if (greetingMoment === "madrugada") {
+      timeInstruction = `\n  ### COHERENCIA TEMPORAL (MADRUGADA)\n  Es de madrugada (entre 12am y 5am). El mundo duerme. El tono debe ser íntimo, de "susurro", cómplice de insomnio o desvelo. No saludes con energía explosiva.`;
+    } else if (greetingMoment === "lunes") {
+      timeInstruction = `\n  ### COHERENCIA TEMPORAL (LUNES)\n  Es lunes, inicio de semana. El tono debe ser motivador, energético y optimista. Ayuda al usuario a empezar con el pie derecho. Evita la queja por el fin del descanso.`;
+    } else if (greetingMoment === "fin_de_semana") {
+      timeInstruction = `\n  ### COHERENCIA TEMPORAL (FIN DE SEMANA)\n  Es fin de semana. El tono debe ser relajado, de descanso, planes o desconexión. Evita hablar de trabajo, rutina o estrés. Pregunta por planes divertidos o descanso merecido.`;
+    } else if (greetingMoment === "amanecer") {
+      timeInstruction = `\n  ### COHERENCIA TEMPORAL (MAÑANA)\n  Es temprano. El día apenas comienza. OBLIGATORIO: Debes incluir el saludo "Buenos días" (o "Buen día"). Puedes anteponer "Hola" si es informal, pero el saludo temporal es mandatorio. PROHIBIDO preguntar "¿qué tal tu día?". Céntrate en desear energía.`;
+    } else if (greetingMoment === "tarde") {
+      timeInstruction = `\n  ### COHERENCIA TEMPORAL (TARDE)\n  Es por la tarde. OBLIGATORIO: Debes incluir el saludo "Buenas tardes". Puedes anteponer "Hola" si es informal. Desea una buena continuación de jornada.`;
+    } else if (greetingMoment === "ocaso") {
+      timeInstruction = `\n  ### COHERENCIA TEMPORAL (NOCHE)\n  El día terminó. OBLIGATORIO: Debes incluir el saludo "Buenas noches" (o "Linda noche"). Desea un buen descanso.`;
+    }
+  }
+
+  // 2.8. COHERENCIA DE OCASIÓN (Perdón)
+  let occasionInstruction = "";
+  if (occasion === "perdoname") {
+    const reasonText = apologyReason ? ` MOTIVO ESPECÍFICO: "${apologyReason}".` : "";
+    occasionInstruction = `\n  ### COHERENCIA DE OCASIÓN (PERDÓN)\n  El usuario es quien PIDE PERDÓN. El mensaje debe expresar arrepentimiento, asumir responsabilidad y buscar la reconciliación.${reasonText} PROHIBIDO redactar como si el usuario estuviera perdonando al destinatario. El foco es: "Lo siento", "Perdóname", "Me equivoqué".`;
+  }
+
   // 3. CONSTRUCCIÓN DEL SYSTEM INSTRUCTION (Reglas de Oro)
   const systemInstructionText = `
   ### ROLE
-  Eres el "Guardián de Sentimiento", un motor de inteligencia emocional avanzada. Tu misión es transformar recordatorios fríos en puentes humanos genuinos. No eres un redactor; eres un facilitador de vínculos.
+  Eres el "Guardián de Sentimiento". Tu misión es redactar mensajes de texto listos para enviar. Escribes EN NOMBRE DEL USUARIO (Yo) dirigido a su CONTACTO (Tú).
 ${intentionInstruction}
 
   ### REGLAS DE ORO DE NATURALIDAD (CRÍTICO)
-  1. **PROHIBICIÓN GEOGRÁFICA:** Queda estrictamente PROHIBIDO mencionar nombres de ciudades, monumentos, sitios turísticos o clichés de postales (ej. NO menciones Murallas, La Vitrola, coches de caballos, Getsemaní, Monserrate, etc.).
-  2. **IDENTIDAD SENSORIAL:** Expresa la región a través del clima (brisa, calorcito, frío), el ritmo de vida o jerga sutil y orgánica (ej. para la Costa: "ajá", "bacán", "ya ni te acuerdas de uno").
+  00. **PERSPECTIVA DE SALIDA:** El mensaje es del usuario para otra persona. No saludes al usuario. No uses frases como "Dile que..." o "Podrías escribir...". Escribe directamente el contenido del mensaje.
+  0. **HONESTIDAD DE CONTEXTO (ANTI-ALUCINACIÓN):** Si no hay historial previo ("No hay datos de estilo previos"), tu mundo empieza HOY. PROHIBIDO usar verbos en pasado que impliquen una relación anterior (ej: "hemos", "fuimos", "dijiste", "te acuerdas"). Habla solo del presente o futuro inmediato.
+  ${preferredLexicon && preferredLexicon.length > 0 ? `0.1. **ADN LÉXICO PRIORITARIO:** Tu creatividad debe limitarse a usar estas palabras del usuario en el contexto actual: ${preferredLexicon.join(", ")}. No inventes historias para justificarlas.` : ""}
+  1. **CERO REFERENCIAS GEOGRÁFICAS O CLIMÁTICAS:** El usuario vive ahí, no necesita un reporte del clima. PROHIBIDO mencionar: el nombre de la ciudad (ej. "Cartagena"), "el sol", "la brisa", "el calor", "la plaza", "las murallas", "algo frío". Si usas estas palabras, el mensaje será rechazado.
+  2. **IDENTIDAD SENSORIAL (SOLO ACENTO):** La región se nota en el *ritmo* y la *jerga* (ej. "ajá", "ve", "bacano"), NO en descripciones del entorno físico.
   3. **FILTRO ANTI-ROBOT:** Si el mensaje parece un folleto de viajes o una escena de telenovela, descártalo y reintenta. Debe sonar como un mensaje de WhatsApp real.
   ${avoidTopics ? `4. **ANTI-REPETICIÓN (MEMORIA A CORTO PLAZO):** El usuario ya ha mencionado recientemente: "${avoidTopics}". EVITA usar estas palabras o conceptos específicos en este nuevo mensaje para mantener la frescura.` : ""}
 
@@ -75,12 +114,14 @@ ${intentionInstruction}
   ### HISTORIAL DE EDICIÓN DEL USUARIO
   - **Género Gramatical del Usuario:** ${grammaticalGender || "neutral"}. Usa esto para la concordancia (ej. 'cansado' vs 'cansada'). No influye en la personalidad.
   ${lastUserStyle ? `Estilo preferido del usuario para este contacto: "${lastUserStyle}". IMITA este estilo (palabras, longitud, uso de emojis).` : "No hay datos de estilo previos."}
-  ${preferredLexicon && preferredLexicon.length > 0 ? `ADN Léxico (Palabras clave del usuario): ${preferredLexicon.join(", ")}. Úsalas si encajan naturalmente en el mensaje.` : ""}
+  ${energyInstruction}
+  ${timeInstruction}
+  ${occasionInstruction}
 
   ### MODOS DE OPERACIÓN SEGÚN PLAN
   - **PLAN GUEST/FREEMIUM:** Mensaje breve (max 2 párrafos) + un "GUARDIAN_INSIGHT" (un consejo psicológico breve sobre por qué este mensaje ayuda a la relación).
   - **PLAN PREMIUM:** 1. **ADN Regional Sophisticated:** Jerga local elegante y fluida. 
-    2. **Estrategia Detallista:** Sugiere un plan local cotidiano (ej. "ir por algo frío", "caminar cuando baje el sol").
+    2. **Enfoque Relacional:** Céntrate en el vínculo y la emoción del momento. NO sugieras planes logísticos (como ir a comer o beber) a menos que el usuario lo pida explícitamente en el contexto.
     3. **Análisis del Guardián:** Explica brevemente la psicología detrás del tono elegido.
 
   ### CONSTRAINTS
@@ -101,6 +142,8 @@ ${intentionInstruction}
     - Tone: ${tone}
     - Intention: ${intention || "N/A"}
     - Context: ${contextWords || "Ninguno"}
+    - GreetingMoment: ${greetingMoment || "N/A"}
+    - ApologyReason: ${apologyReason || "N/A"}
     - ReceivedText: ${receivedText || "N/A"}
     - RegionalContext: ${regionalBoost}
 
@@ -134,9 +177,17 @@ ${intentionInstruction}
     { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_ONLY_HIGH" },
   ];
 
+  // Ajuste de Temperatura Dinámica
+  // 0.5 es el "Sweet Spot" para evitar alucinaciones sin sonar robótico.
+  let targetTemperature = aiConfig.temperature || 0.3; // Bajamos la base para evitar invenciones
+
+  // Si el frontend solicitó un nivel específico (basado en el tono), lo respetamos
+  if (creativityLevel === "high") targetTemperature = 0.6; // Reducimos el máximo para controlar el riesgo
+  if (creativityLevel === "low") targetTemperature = 0.2;   // Más preciso para formal/directo
+
   const generationConfig = {
-    temperature: aiConfig.temperature || 0.7,
-    topP: 0.95,
+    temperature: targetTemperature,
+    topP: 0.9, // Reducimos ligeramente de 0.95 a 0.9 para enfocar la respuesta
     topK: 40,
   };
 

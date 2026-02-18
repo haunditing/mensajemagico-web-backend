@@ -148,17 +148,41 @@ const calculateFriction = (original, edited) => {
 
 // Extracción de ADN Léxico (Palabras nuevas que no estaban en el original)
 const extractLexicalDNA = (original, edited) => {
-  const clean = (text) =>
-    text
-      .toLowerCase()
-      .replace(/[^\w\sáéíóúñü]/gi, "")
-      .split(/\s+/);
+  const clean = (text) => {
+    if (!text) return [];
+    try {
+      // Tokenización avanzada: Captura palabras (\p{L}), números (\p{N}) y Emojis (\p{Extended_Pictographic})
+      // Esto permite que el Guardián aprenda si usas emojis específicos.
+      return text.toLowerCase().match(/(\p{L}+|\p{N}+|\p{Extended_Pictographic}+)/gu) || [];
+    } catch (e) {
+      // Fallback para entornos antiguos
+      return text
+        .toLowerCase()
+        .replace(/[^\w\sáéíóúñü]/gi, " ")
+        .split(/\s+/);
+    }
+  };
+
   const originalSet = new Set(clean(original));
   const editedArr = clean(edited);
-  // Filtramos palabras cortas (conectores) y devolvemos solo las nuevas
-  return [
-    ...new Set(editedArr.filter((w) => !originalSet.has(w) && w.length > 3)),
-  ];
+  
+  // Identificar palabras que el usuario AGREGÓ (no estaban en el original)
+  const newWords = editedArr.filter((w) => {
+    if (originalSet.has(w)) return false;
+    // Si es un emoji (no tiene letras), lo incluimos siempre. Si es palabra, filtramos las muy cortas.
+    return !/[a-záéíóúñü]/i.test(w) || w.length > 2;
+  });
+
+  // Identificar expresiones cortas (bigramas) que podrían ser muletillas (ej: "pues si", "ya ves")
+  const bigrams = [];
+  for (let i = 0; i < editedArr.length - 1; i++) {
+    const bigram = `${editedArr[i]} ${editedArr[i+1]}`;
+    if (!original.toLowerCase().includes(bigram)) {
+      bigrams.push(bigram);
+    }
+  }
+
+  return [...new Set([...newWords, ...bigrams])];
 };
 
 /**

@@ -44,6 +44,8 @@ router.post("/generate", getUser, async (req, res, next) => {
     formatInstruction,
     intention,
     relationship,
+    greetingMoment,
+    apologyReason,
   } = req.body;
 
   const user = req.user;
@@ -159,6 +161,8 @@ router.post("/generate-stream", getUser, async (req, res) => {
     formatInstruction,
     intention,
     relationship,
+    greetingMoment,
+    apologyReason,
   } = req.body;
 
   const user = req.user;
