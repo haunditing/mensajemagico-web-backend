@@ -36,6 +36,7 @@ const ContactSchema = new mongoose.Schema(
         sentimentScore: Number,
         wasEdited: { type: Boolean, default: false },
         originalContent: String,
+        isUsed: { type: Boolean, default: false },
       },
     ],
   },

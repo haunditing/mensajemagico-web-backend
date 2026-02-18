@@ -146,14 +146,19 @@ const calculateFriction = (original, edited) => {
   return Math.round((distance / maxLength) * 100);
 };
 
+// Lista de palabras comunes (Stop Words) para no ensuciar el ADN léxico
+const STOP_WORDS = new Set([
+  "que", "los", "las", "una", "unos", "unas", "para", "por", "con", "del", "al", "pero", "mas", "sin", "sobre", "este", "esta", "estos", "estas", "todo", "toda", "todos", "todas", "como", "cuando", "donde", "quien", "porque", "pues", "entonces", "luego", "bien", "mal", "asi", "eso", "esto", "aquello", "aqui", "alli", "alla", "ahora", "hoy", "ayer", "mañana", "siempre", "nunca", "quizas", "tal", "vez", "ser", "estar", "haber", "tener", "hacer", "poder", "decir", "ir", "ver", "dar", "saber", "querer", "llegar", "pasar", "deber", "poner", "parecer", "quedar", "creer", "hablar", "llevar", "dejar", "seguir", "encontrar", "llamar", "venir", "pensar", "salir", "volver", "tomar", "conocer", "vivir", "sentir", "tratar", "mirar", "contar", "empezar", "esperar", "buscar", "existir", "entrar", "trabajar", "escribir", "perder", "producir", "ocurrir", "entender", "pedir", "recibir", "recordar", "terminar", "permitir", "aparecer", "conseguir", "comenzar", "servir", "sacar", "necesitar", "mantener", "resultar", "leer", "caer", "cambiar", "presentar", "crear", "abrir", "considerar", "oir", "acabar", "convertir", "ganar", "formar", "traer", "partir", "morir", "aceptar", "realizar", "suponer", "comprender", "lograr", "explicar", "preguntar", "tocar", "reconocer", "estudiar", "alcanzar", "nacer", "dirigir", "correr", "utilizar", "pagar", "ayudar", "gustar", "jugar", "escuchar", "cumplir", "ofrecer", "descubrir", "levantar", "intentar"
+]);
+
 // Extracción de ADN Léxico (Palabras nuevas que no estaban en el original)
 const extractLexicalDNA = (original, edited) => {
   const clean = (text) => {
     if (!text) return [];
     try {
-      // Tokenización avanzada: Captura palabras (\p{L}), números (\p{N}) y Emojis (\p{Extended_Pictographic})
-      // Esto permite que el Guardián aprenda si usas emojis específicos.
-      return text.toLowerCase().match(/(\p{L}+|\p{N}+|\p{Extended_Pictographic}+)/gu) || [];
+      // Tokenización avanzada: Captura palabras, números, Hashtags (#), Menciones (@) y Emojis
+      // MEJORA: Regex robusta para emojis compuestos (ZWJ, Modificadores, Banderas) que los captura como unidad
+      return text.toLowerCase().match(/([#@]?[\\p{L}\\p{N}_]+|(?:\p{Extended_Pictographic}|\p{Emoji_Modifier}|\p{Regional_Indicator}|\u200D|\uFE0F)+)/gu) || [];
     } catch (e) {
       // Fallback para entornos antiguos
       return text
@@ -170,7 +175,7 @@ const extractLexicalDNA = (original, edited) => {
   const newWords = editedArr.filter((w) => {
     if (originalSet.has(w)) return false;
     // Si es un emoji (no tiene letras), lo incluimos siempre. Si es palabra, filtramos las muy cortas.
-    return !/[a-záéíóúñü]/i.test(w) || w.length > 2;
+    return (!/[a-záéíóúñü]/i.test(w) || w.length > 2) && !STOP_WORDS.has(w);
   });
 
   // Identificar expresiones cortas (bigramas) que podrían ser muletillas (ej: "pues si", "ya ves")
@@ -265,6 +270,92 @@ const recordInteraction = async (
   }
 };
 
+/**
+ * MARCA UN MENSAJE COMO USADO/EXITOSO
+ * Actualiza el historial y refina el perfil del usuario.
+ */
+const markAsUsed = async (userId, contactId, content, { occasion, tone, originalContent }) => {
+  try {
+    const contact = await Contact.findOne({ _id: contactId, userId });
+    if (!contact) return;
+
+    // 1. Actualizar Historial
+    // Buscamos si ya existe (por contenido exacto o si fue el último generado)
+    // FIX: Usamos originalContent si existe para buscar el mensaje original que generó la IA
+    const searchContent = originalContent || content;
+    let historyItem = contact.history.find(h => h.content === searchContent);
+    
+    // FIX: Si no hay match exacto, buscamos si el contenido está dentro de un JSON guardado (caso común)
+    if (!historyItem) {
+      const recentHistory = contact.history.slice(-10); // Miramos los últimos 10
+      const jsonItem = recentHistory.find(h => {
+        if (typeof h.content !== 'string' || !h.content.trim().startsWith("{")) return false;
+        
+        // Intento 1: Búsqueda simple (rápida)
+        if (h.content.includes(searchContent.substring(0, 20))) return true;
+
+        // Intento 2: Parsear JSON para comparar contenido limpio (robusta)
+        try {
+          const parsed = JSON.parse(h.content);
+          const msgs = parsed.generated_messages || [];
+          // Buscamos si alguno de los mensajes generados coincide con el original
+          return msgs.some(m => m.content === searchContent);
+        } catch (e) {
+          return false;
+        }
+      });
+      
+      if (jsonItem) historyItem = jsonItem;
+    }
+    
+    if (historyItem) {
+      historyItem.isUsed = true;
+      // Actualizamos el contenido al texto final limpio/editado para mejorar el contexto futuro
+      historyItem.content = content;
+      if (originalContent && originalContent !== content) {
+        historyItem.wasEdited = true;
+      }
+      logger.info(`✅ [VALIDACIÓN] Mensaje existente actualizado a isUsed=true: "${content.substring(0, 20)}..."`);
+    } else {
+      // Si no existe (ej. fue editado), lo agregamos como nuevo éxito
+      contact.history.push({
+        occasion,
+        tone,
+        content,
+        timestamp: new Date(),
+        isUsed: true,
+        wasEdited: !!originalContent && originalContent !== content
+      });
+      logger.info(`✅ [VALIDACIÓN] Nuevo mensaje insertado con isUsed=true: "${content.substring(0, 20)}..."`);
+    }
+
+    // 2. Refinamiento de Estilo (Si hubo edición)
+    if (originalContent && originalContent !== content) {
+      if (!contact.guardianMetadata) contact.guardianMetadata = {};
+      // Guardamos la versión final como el "estilo ideal"
+      contact.guardianMetadata.lastUserStyle = extractStyle(content);
+      
+      // Extraemos ADN de la diferencia
+      const newDna = extractLexicalDNA(originalContent, content);
+      const currentLexicon = new Set(contact.guardianMetadata.preferredLexicon || []);
+      newDna.forEach(word => currentLexicon.add(word));
+      contact.guardianMetadata.preferredLexicon = Array.from(currentLexicon).slice(-50);
+    } else {
+      // Si no hubo edición, reforzamos las palabras clave del mensaje exitoso
+      const currentLexicon = new Set(contact.guardianMetadata?.preferredLexicon || []);
+      const words = extractLexicalDNA("", content); // Extraer palabras significativas del mensaje final
+      words.forEach(w => currentLexicon.add(w));
+      if (!contact.guardianMetadata) contact.guardianMetadata = {};
+      contact.guardianMetadata.preferredLexicon = Array.from(currentLexicon).slice(-50);
+    }
+
+    await contact.save();
+    logger.info("Guardián: Mensaje marcado como usado/exitoso", { contactId });
+  } catch (error) {
+    logger.error("Error en markAsUsed", { error });
+  }
+};
+
 module.exports = {
   getContext,
   recordInteraction,
@@ -272,4 +363,5 @@ module.exports = {
   extractStyle,
   calculateFriction,
   extractLexicalDNA,
+  markAsUsed,
 };

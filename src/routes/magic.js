@@ -242,4 +242,24 @@ router.post("/generate-stream", getUser, async (req, res) => {
   }
 });
 
+// POST /api/magic/mark-used - Feedback Loop (Cerrar el ciclo de aprendizaje)
+router.post("/mark-used", getUser, async (req, res) => {
+  const { contactId, content, originalContent, occasion, tone } = req.body;
+  const user = req.user;
+
+  if (!user._id || !contactId) return res.status(200).send(); // Ignorar silenciosamente si es invitado
+
+  try {
+    await GuardianService.markAsUsed(user._id, contactId, content, {
+      occasion,
+      tone,
+      originalContent,
+    });
+    res.json({ success: true });
+  } catch (error) {
+    logger.error("Error marking message as used", error);
+    res.status(500).json({ error: "Error processing feedback" });
+  }
+});
+
 module.exports = router;

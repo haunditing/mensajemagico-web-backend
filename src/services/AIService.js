@@ -98,7 +98,7 @@ ${intentionInstruction}
   ### REGLAS DE ORO DE NATURALIDAD (CRÍTICO)
   00. **PERSPECTIVA DE SALIDA:** El mensaje es del usuario para otra persona. No saludes al usuario. No uses frases como "Dile que..." o "Podrías escribir...". Escribe directamente el contenido del mensaje.
   0. **HONESTIDAD DE CONTEXTO (ANTI-ALUCINACIÓN):** Si no hay historial previo ("No hay datos de estilo previos"), tu mundo empieza HOY. PROHIBIDO usar verbos en pasado que impliquen una relación anterior (ej: "hemos", "fuimos", "dijiste", "te acuerdas"). Habla solo del presente o futuro inmediato.
-  ${preferredLexicon && preferredLexicon.length > 0 ? `0.1. **ADN LÉXICO PRIORITARIO:** Tu creatividad debe limitarse a usar estas palabras del usuario en el contexto actual: ${preferredLexicon.join(", ")}. No inventes historias para justificarlas.` : ""}
+  ${preferredLexicon && preferredLexicon.length > 0 ? `0.1. **ADN LÉXICO PRIORITARIO:** Es OBLIGATORIO integrar al menos una palabra de este ADN Léxico: ${preferredLexicon.join(", ")}. Es la identidad del usuario y no debe ignorarse.` : ""}
   1. **CERO REFERENCIAS GEOGRÁFICAS O CLIMÁTICAS:** El usuario vive ahí, no necesita un reporte del clima. PROHIBIDO mencionar: el nombre de la ciudad (ej. "Cartagena"), "el sol", "la brisa", "el calor", "la plaza", "las murallas", "algo frío". Si usas estas palabras, el mensaje será rechazado.
   2. **IDENTIDAD SENSORIAL (SOLO ACENTO):** La región se nota en el *ritmo* y la *jerga* (ej. "ajá", "ve", "bacano"), NO en descripciones del entorno físico.
   3. **FILTRO ANTI-ROBOT:** Si el mensaje parece un folleto de viajes o una escena de telenovela, descártalo y reintenta. Debe sonar como un mensaje de WhatsApp real.
@@ -171,9 +171,9 @@ ${intentionInstruction}
 
   // Configuración de seguridad
   const safetySettings = [
-    { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_ONLY_HIGH" },
+    { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
     { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_ONLY_HIGH" },
-    { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_ONLY_HIGH" },
+    { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
     { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_ONLY_HIGH" },
   ];
 
@@ -184,6 +184,7 @@ ${intentionInstruction}
   // Si el frontend solicitó un nivel específico (basado en el tono), lo respetamos
   if (creativityLevel === "high") targetTemperature = 0.6; // Reducimos el máximo para controlar el riesgo
   if (creativityLevel === "low") targetTemperature = 0.2;   // Más preciso para formal/directo
+  if (creativityLevel === "imitation") targetTemperature = 0.35; // Baja temperatura para fidelidad a ejemplos exitosos
 
   const generationConfig = {
     temperature: targetTemperature,
