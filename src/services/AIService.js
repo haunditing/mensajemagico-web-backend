@@ -23,187 +23,229 @@ const prepareRequest = (aiConfig, data) => {
     snoozeCount = 0,
     relationalHealth = 5,
     modelOverride,
-    lastUserStyle, // Recibimos el estilo aprendido
-    preferredLexicon, // Recibimos el ADN Léxico
+    lastUserStyle,
+    preferredLexicon,
     grammaticalGender,
     intention,
-    avoidTopics, // Recibimos la lista de exclusión del historial
-    styleInstructions, // Recibimos las instrucciones dinámicas del Guardián (Filtro de Profundidad)
-    creativityLevel, // Nivel de creatividad calculado en el frontend
-    greetingMoment, // Momento del saludo (amanecer, tarde, ocaso, etc.)
-    apologyReason, // Motivo de la disculpa
+    avoidTopics,
+    styleInstructions,
+    creativityLevel,
+    greetingMoment,
+    apologyReason,
   } = data;
 
-  // 2. CONSTRUCCIÓN DE CONTEXTO REGIONAL
+  // 1. CONTEXTO REGIONAL
   const regionalBoost = RegionalContextService.getRegionalBoost(
     userLocation,
     planLevel,
     neutralMode,
   );
 
-  // 2.5. CONSTRUCCIÓN DE INTENCIÓN DEL GUARDIÁN
+  // 2. INTENCIÓN DEL GUARDIÁN (OBJETIVO PSICOLÓGICO)
   let intentionInstruction = "";
-  if (intention) {
-    const intentionMap = {
-      "low_effort": "OBJETIVO PSICOLÓGICO: BAJO ESFUERZO (Solo Cariño). Tu meta es mantener el vínculo con calidez pero sin generar carga cognitiva. No hagas preguntas que obliguen a responder. Sé afectuoso pero ligero.",
-      "inquiry": "OBJETIVO PSICOLÓGICO: CONECTAR (Indagación). Tu meta es abrir la conversación. Haz una pregunta interesante o muestra curiosidad genuina sobre su vida para incentivar una respuesta.",
-      "resolutive": "OBJETIVO PSICOLÓGICO: RESOLVER. Tu meta es cerrar un plan o tomar una decisión. Sé directo, propón opciones claras (A o B) y evita la ambigüedad.",
-      "action": "OBJETIVO PSICOLÓGICO: IMPULSAR (Acción). Tu meta es lograr que la otra persona haga algo. Usa verbos imperativos suaves, sé persuasivo y transmite la importancia de la tarea de forma educada."
-    };
-
-    if (intentionMap[intention]) {
-      intentionInstruction = `\n  ### INSTRUCCIÓN DEL GUARDIÁN (PRIORIDAD ALTA)\n  ${intentionMap[intention]}`;
-    }
-  }
-
-  // 2.6. ADAPTACIÓN DE ENERGÍA (Modo Respuesta)
-  let energyInstruction = "";
-  if (receivedText && receivedText.length > 0) {
-    const receivedLength = receivedText.length;
-    const responseLength = receivedLength < 50 ? "muy breve y directa" : receivedLength < 150 ? "concisa" : "detallada y profunda";
-    energyInstruction = `\n  ### ADAPTACIÓN DE ENERGÍA (ESPEJO)\n  El usuario recibió un mensaje de ${receivedLength} caracteres. Tu respuesta debe ser **${responseLength}** para igualar la energía del interlocutor. No seas intenso si el otro fue seco.`;
-  }
-
-  // 2.7. COHERENCIA TEMPORAL (Para Saludos)
-  let timeInstruction = "";
-  if (greetingMoment) {
-    if (greetingMoment === "madrugada") {
-      timeInstruction = `\n  ### COHERENCIA TEMPORAL (MADRUGADA)\n  Es de madrugada (entre 12am y 5am). El mundo duerme. El tono debe ser íntimo, de "susurro", cómplice de insomnio o desvelo. No saludes con energía explosiva.`;
-    } else if (greetingMoment === "lunes") {
-      timeInstruction = `\n  ### COHERENCIA TEMPORAL (LUNES)\n  Es lunes, inicio de semana. El tono debe ser motivador, energético y optimista. Ayuda al usuario a empezar con el pie derecho. Evita la queja por el fin del descanso.`;
-    } else if (greetingMoment === "fin_de_semana") {
-      timeInstruction = `\n  ### COHERENCIA TEMPORAL (FIN DE SEMANA)\n  Es fin de semana. El tono debe ser relajado, de descanso, planes o desconexión. Evita hablar de trabajo, rutina o estrés. Pregunta por planes divertidos o descanso merecido.`;
-    } else if (greetingMoment === "amanecer") {
-      timeInstruction = `\n  ### COHERENCIA TEMPORAL (MAÑANA)\n  Es temprano. El día apenas comienza. OBLIGATORIO: Debes incluir el saludo "Buenos días" (o "Buen día"). Puedes anteponer "Hola" si es informal, pero el saludo temporal es mandatorio. PROHIBIDO preguntar "¿qué tal tu día?". Céntrate en desear energía.`;
-    } else if (greetingMoment === "tarde") {
-      timeInstruction = `\n  ### COHERENCIA TEMPORAL (TARDE)\n  Es por la tarde. OBLIGATORIO: Debes incluir el saludo "Buenas tardes". Puedes anteponer "Hola" si es informal. Desea una buena continuación de jornada.`;
-    } else if (greetingMoment === "ocaso") {
-      timeInstruction = `\n  ### COHERENCIA TEMPORAL (NOCHE)\n  El día terminó. OBLIGATORIO: Debes incluir el saludo "Buenas noches" (o "Linda noche"). Desea un buen descanso.`;
-    }
-  }
-
-  // 2.8. COHERENCIA DE OCASIÓN (Perdón)
-  let occasionInstruction = "";
-  if (occasion === "perdoname") {
-    const reasonText = apologyReason ? ` MOTIVO ESPECÍFICO: "${apologyReason}".` : "";
-    occasionInstruction = `\n  ### COHERENCIA DE OCASIÓN (PERDÓN)\n  El usuario es quien PIDE PERDÓN. El mensaje debe expresar arrepentimiento, asumir responsabilidad y buscar la reconciliación.${reasonText} PROHIBIDO redactar como si el usuario estuviera perdonando al destinatario. El foco es: "Lo siento", "Perdóname", "Me equivoqué".`;
-  }
-
-  // 2.9. COHERENCIA DE TONO (Directo)
-  let toneInstruction = "";
-  if (tone === "directo") {
-    toneInstruction = `\n  ### COHERENCIA DE TONO (DIRECTO)\n  ESTILO: "Directo y Sincronizado".\n  1. **Apertura:** Salta protocolos innecesarios. Ve directo al saludo breve y al grano.\n  2. **Anclaje Temporal:** Si el contexto menciona 'hoy', 'mañana', 'el partido', 'el cumpleaños' o cualquier evento, el mensaje DEBE centrarse en ese contexto.\n  3. **Efecto Espejo:** Si el input es corto, la respuesta es corta. No uses rellenos como "Espero que estés bien".\n  Ejemplo: Si el contexto es 'mañana' y 'partido', el mensaje debe ser: "¿Qué hay para lo del partido de mañana?" o "¿Cómo va lo del partido de mañana?".`;
-  }
-
-  // 3. CONSTRUCCIÓN DEL SYSTEM INSTRUCTION (Reglas de Oro)
-  const systemInstructionText = `
-  ### ROLE
-  Eres el "Guardián de Sentimiento". Tu misión es redactar mensajes de texto listos para enviar. Escribes EN NOMBRE DEL USUARIO (Yo) dirigido a su CONTACTO (Tú).
-${intentionInstruction}
-
-  ### REGLAS DE ORO DE NATURALIDAD (CRÍTICO)
-  00. **PERSPECTIVA DE SALIDA:** El mensaje es del usuario para otra persona. No saludes al usuario. No uses frases como "Dile que..." o "Podrías escribir...". Escribe directamente el contenido del mensaje.
-  0. **HONESTIDAD DE CONTEXTO (ANTI-ALUCINACIÓN):** Si no hay historial previo ("No hay datos de estilo previos"), tu mundo empieza HOY. PROHIBIDO usar verbos en pasado que impliquen una relación anterior (ej: "hemos", "fuimos", "dijiste", "te acuerdas"). Habla solo del presente o futuro inmediato.
-  ${preferredLexicon && preferredLexicon.length > 0 ? `0.1. **ADN LÉXICO PRIORITARIO:** Es OBLIGATORIO integrar al menos una palabra de este ADN Léxico: ${preferredLexicon.join(", ")}. Es la identidad del usuario y no debe ignorarse.` : ""}
-  1. **CERO REFERENCIAS GEOGRÁFICAS O CLIMÁTICAS:** El usuario vive ahí, no necesita un reporte del clima. PROHIBIDO mencionar: el nombre de la ciudad (ej. "Cartagena"), "el sol", "la brisa", "el calor", "la plaza", "las murallas", "algo frío". Si usas estas palabras, el mensaje será rechazado.
-  2. **IDENTIDAD SENSORIAL (SOLO ACENTO):** La región se nota en el *ritmo* y la *jerga* (ej. "ajá", "ve", "bacano"), NO en descripciones del entorno físico.
-  3. **FILTRO ANTI-ROBOT:** Si el mensaje parece un folleto de viajes o una escena de telenovela, descártalo y reintenta. Debe sonar como un mensaje de WhatsApp real.
-  ${avoidTopics ? `4. **ANTI-REPETICIÓN (MEMORIA A CORTO PLAZO):** El usuario ya ha mencionado recientemente: "${avoidTopics}". EVITA usar estas palabras o conceptos específicos en este nuevo mensaje para mantener la frescura.` : ""}
-
-  ### CONTEXTO DEL USUARIO
-  ### CONTEXTO DINÁMICO
-  - **Salud Relacional:** ${relationalHealth}/10. 
-    * Si es < 4: Tono de "Reparación". Sé vulnerable, evita el reclamo y no presiones.
-    * Si es > 8: Tono de "Complicidad". Usa humor interno y confianza alta.
-  - **SnoozeCount:** ${snoozeCount}. Si es > 1, admite la demora con honestidad (ej. "Me embolaté, pero aquí estoy").
-
-  ### HISTORIAL DE EDICIÓN DEL USUARIO
-  - **Género Gramatical del Usuario:** ${grammaticalGender || "neutral"}. Usa esto para la concordancia (ej. 'cansado' vs 'cansada'). No influye en la personalidad.
-  ${lastUserStyle ? `Estilo preferido del usuario para este contacto: "${lastUserStyle}". IMITA este estilo (palabras, longitud, uso de emojis).` : "No hay datos de estilo previos."}
-  ${energyInstruction}
-  ${timeInstruction}
-  ${occasionInstruction}
-  ${toneInstruction}
-
-  ### MODOS DE OPERACIÓN SEGÚN PLAN
-  - **PLAN GUEST/FREEMIUM:** Mensaje breve (max 2 párrafos) + un "GUARDIAN_INSIGHT" (un consejo psicológico breve sobre por qué este mensaje ayuda a la relación).
-  - **PLAN PREMIUM:** 1. **ADN Regional Sophisticated:** Jerga local elegante y fluida. 
-    2. **Enfoque Relacional:** Céntrate en el vínculo y la emoción del momento. NO sugieras planes logísticos (como ir a comer o beber) a menos que el usuario lo pida explícitamente en el contexto.
-    3. **Análisis del Guardián:** Explica brevemente la psicología detrás del tono elegido.
-
-  ### CONSTRAINTS
-  - Estilo: ${aiConfig.prompt_style || "Conversacional, humano y cálido."}
-  - Extensión: ${aiConfig.length_instruction || "Breve, directo al punto."}
-  - Límite: 500 tokens. No uses listas numeradas en el mensaje final.
-  - DINÁMICA DE SALUDO: El saludo debe ser el espejo de la Salud Relacional (${relationalHealth}/10). Prohibido usar saludos genéricos si la salud es extrema (muy baja o muy alta). Ajusta el nivel de confianza y el modismo regional desde la primera palabra.
-`.trim();
-
-  // 4. CONSTRUCCIÓN DEL PROMPT DE USUARIO
-  const promptText = `
-    ### INPUT DATA
-    - UserPlan: ${planLevel ? planLevel.toUpperCase() : "GUEST"}
-    - RelationalHealth: ${relationalHealth}/10
-    - Region: ${userLocation || "Desconocida"}
-    - Occasion: ${occasion}
-    - Relationship: ${relationship || "General"}
-    - Tone: ${tone}
-    - Intention: ${intention || "N/A"}
-    - Context: ${contextWords || "Ninguno"}
-    - GreetingMoment: ${greetingMoment || "N/A"}
-    - ApologyReason: ${apologyReason || "N/A"}
-    - ReceivedText: ${receivedText || "N/A"}
-    - RegionalContext: ${regionalBoost}
-
-    ${styleInstructions ? `### INSTRUCCIONES DE ESTILO (GUARDIÁN)\n${styleInstructions}` : ""}
-
-    ${formatInstruction || ""}
-  `.trim();
-
-  const selectedModel = modelOverride || aiConfig.model || "gemini-1.5-flash";
-  const isGemma = selectedModel.toLowerCase().includes("gemma");
-  
-  let model;
-  let finalPrompt;
-
-  if (isGemma) {
-    model = genAI.getGenerativeModel({ model: selectedModel });
-    finalPrompt = `[SYSTEM_RULES]\n${systemInstructionText}\n\n[USER_REQUEST]\n${promptText}`;
-  } else {
-    model = genAI.getGenerativeModel({
-      model: selectedModel,
-      systemInstruction: systemInstructionText,
-    });
-    finalPrompt = promptText;
-  }
-
-  // Configuración de seguridad
-  const safetySettings = [
-    { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
-    { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_ONLY_HIGH" },
-    { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
-    { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_ONLY_HIGH" },
-  ];
-
-  // Ajuste de Temperatura Dinámica
-  // 0.5 es el "Sweet Spot" para evitar alucinaciones sin sonar robótico.
-  let targetTemperature = aiConfig.temperature || 0.3; // Bajamos la base para evitar invenciones
-
-  // Si el frontend solicitó un nivel específico (basado en el tono), lo respetamos
-  if (creativityLevel === "high") targetTemperature = 0.6; // Reducimos el máximo para controlar el riesgo
-  if (creativityLevel === "low") targetTemperature = 0.2;   // Más preciso para formal/directo
-  if (creativityLevel === "imitation") targetTemperature = 0.35; // Baja temperatura para fidelidad a ejemplos exitosos
-
-  const generationConfig = {
-    temperature: targetTemperature,
-    topP: 0.9, // Reducimos ligeramente de 0.95 a 0.9 para enfocar la respuesta
-    topK: 40,
+  const intentionMap = {
+    low_effort:
+      "OBJETIVO: BAJO ESFUERZO. Mantén el vínculo con calidez pero sin generar carga cognitiva. No hagas preguntas.",
+    inquiry:
+      "OBJETIVO: CONECTAR. Haz una pregunta interesante o muestra curiosidad genuina.",
+    resolutive:
+      "OBJETIVO: RESOLVER. Sé directo, propón opciones claras (A o B) y evita ambigüedad.",
+    action:
+      "OBJETIVO: IMPULSAR. Usa verbos imperativos suaves, sé persuasivo y directo.",
   };
 
-  return { model, finalPrompt, generationConfig, safetySettings, selectedModel, systemInstructionText, promptText };
+  if (intention && intentionMap[intention]) {
+    intentionInstruction = `\n### INSTRUCCIÓN DE INTENCIÓN (DOMINANTE)\n${intentionMap[intention]}`;
+  }
+
+  // 3. ADAPTACIÓN DE ENERGÍA (ESPEJO) - Controla extensión sin solaparse con constraints
+  let energyInstruction = "";
+  if (receivedText && receivedText.trim().length > 0) {
+    const receivedLength = receivedText.trim().length;
+    let responseLength = "detallada";
+
+    if (receivedLength < 25) {
+      responseLength = "ultra breve (máximo 1 oración o 5 palabras)";
+    } else if (receivedLength < 60) {
+      responseLength = "muy breve (máximo 15 palabras)";
+    } else if (receivedLength < 150) {
+      responseLength = "concisa";
+    }
+
+    energyInstruction = `\n### ADAPTACIÓN DE ENERGÍA (ESPEJO)\nEl mensaje recibido es de ${receivedLength} caracteres. Tu respuesta DEBE ser **${responseLength}** para igualar la energía.`;
+  }
+
+  // 4. COHERENCIA TEMPORAL (AJUSTADA AL TONO)
+  let timeInstruction = "";
+  const isDirect = tone === "directo";
+  if (greetingMoment) {
+    const timeMap = {
+      madrugada:
+        "Contexto: Madrugada. Tono íntimo, susurro o complicidad de desvelo.",
+      lunes: "Contexto: Lunes. Tono motivador y energético.",
+      fin_de_semana: "Contexto: Fin de semana. Tono relajado y de descanso.",
+      amanecer: isDirect
+        ? "Saludo: Usa 'Buen día' o 'Hola'."
+        : "OBLIGATORIO: Saludo 'Buenos días'. Desea energía.",
+      tarde: isDirect
+        ? "Saludo: Usa 'Buenas tardes'."
+        : "OBLIGATORIO: Saludo 'Buenas tardes'.",
+      ocaso: isDirect
+        ? "Saludo: Usa 'Buenas noches'."
+        : "OBLIGATORIO: Saludo 'Buenas noches'. Desea descanso.",
+    };
+    if (timeMap[greetingMoment]) {
+      timeInstruction = `\n### CONTEXTO TEMPORAL\n${timeMap[greetingMoment]}`;
+    }
+  }
+
+  // 5. COHERENCIA DE TONO (ELIMINA CURSILLERÍA Y SOLAPAMIENTOS)
+  let toneInstruction = "";
+  if (isDirect) {
+    toneInstruction = `\n### REGLA DE ESTILO: DIRECTO Y SINCRONIZADO (MÁXIMA PRIORIDAD)
+1. **Apertura:** Salta protocolos. Ve al punto inmediatamente.
+2. **Anclaje:** Si el contexto menciona eventos (hoy, mañana, partido, recoger, cumple), el mensaje DEBE centrarse en eso.
+3. **Cero Poesía:** Prohibido usar metáforas, frases profundas o cursilerías (ej. "mi refugio", "mi calma"). Sé práctico.
+4. **Filtro de Muletillas:** No uses "ajá" o jergas a menos que el usuario las incluya en el contexto.`;
+  } else if (tone === "sarcástico") {
+    toneInstruction = `\n### REGLA DE ESTILO: SARCASMO FINO (NO AGRESIVO)
+1. **Humor, no Odio:** El objetivo es hacer reír o señalar una ironía, NO herir ni insultar.
+2. **Inteligencia:** Usa juegos de palabras, exageraciones absurdas o subversión de expectativas.
+3. **Límite de Crueldad:** Evita ataques personales directos. Búrlate de la situación, no de la persona.
+4. **Emoji:** Usa 🙄, 🙃 o 💅 para marcar el tono.`;
+  } else if (tone === "coqueto") {
+    toneInstruction = `\n### REGLA DE ESTILO: COQUETO CON CLASE (NO VULGAR)
+1. **Sutileza:** El coqueteo debe ser un juego, no una exigencia. Usa el doble sentido con elegancia.
+2. **Respeto:** Evita comentarios explícitos sobre el cuerpo. Enfócate en la energía, la sonrisa o la inteligencia.
+3. **Misterio:** Deja algo a la imaginación. Es mejor sugerir que mostrar.
+4. **Emoji:** Usa 😉, 😏 o 🔥 con moderación.`;
+  } else if (tone === "divertido") {
+    toneInstruction = `\n### REGLA DE ESTILO: HUMOR FRESCO (NO CLICHÉS)
+1. **Originalidad:** Evita chistes de "papá", juegos de palabras gastados o memes antiguos.
+2. **Contextual:** El humor debe nacer de la situación actual, no ser un chiste genérico pegado.
+3. **Autenticidad:** Usa un tono conversacional y espontáneo.
+4. **Emoji:** Usa 😂, 🤣 o 💀 para marcar el tono.`;
+  } else if (tone === "sincero") {
+    toneInstruction = `\n### REGLA DE ESTILO: SINCERIDAD EQUILIBRADA (NO DRAMA)
+1. **Autenticidad:** Habla desde la verdad, pero sin exagerar sentimientos.
+2. **Claridad:** Di lo que sientes de forma simple y directa, sin rodeos poéticos innecesarios.
+3. **Cero Melodrama:** Evita frases de telenovela o victimización. La sinceridad es tranquila.
+4. **Emoji:** Usa 🙂, 🤍 o ✨ para suavizar.`;
+  } else if (tone === "formal") {
+    toneInstruction = `\n### REGLA DE ESTILO: FORMALIDAD CÁLIDA (NO ROBÓTICA)
+1. **Profesionalismo:** Usa un lenguaje correcto y estructurado, pero humano.
+2. **Cero Rigidez:** Evita sonar como un bot o un comunicado oficial antiguo. Usa "Hola" o "Estimado" según corresponda, pero no "Muy señor mío".
+3. **Claridad:** La cortesía no debe oscurecer el mensaje. Sé claro y respetuoso.
+4. **Emoji:** Usa 🤝, 📩 o ✅ si el contexto lo permite (mínimo).`;
+  } else if (tone === "profundo") {
+    toneInstruction = `\n### REGLA DE ESTILO: PROFUNDIDAD ACCESIBLE (NO PRETENCIOSA)
+1. **Claridad:** La profundidad está en la idea, no en palabras complicadas. Usa lenguaje sencillo.
+2. **Conexión:** Relaciona la reflexión con la experiencia compartida o la emoción del momento.
+3. **Cero Confusión:** Evita abstracciones vagas. Sé concreto en el sentimiento.
+4. **Emoji:** Usa 🌌, 🍃 o 🕯️ para dar atmósfera.`;
+  } else if (tone === "sutil") {
+    toneInstruction = `\n### REGLA DE ESTILO: SUTILEZA EFECTIVA (NO INVISIBLE)
+1. **Indirecta Clara:** Sugiere la intención sin decirla explícitamente, pero asegúrate de que se entienda entre líneas.
+2. **Ambigüedad Estratégica:** Deja espacio para que la otra persona interprete, pero guía esa interpretación.
+3. **Suavidad:** Usa palabras que quiten peso o presión (ej. "quizás", "de pronto", "me pareció").
+4. **Emoji:** Usa 👀, 🤔 o 🍃 para dejar la puerta abierta.`;
+  } else if (tone === "atrasado") {
+    toneInstruction = `\n### REGLA DE ESTILO: ATRASADO CON CLASE (NO CULPA TÓXICA)
+1. **Reconocer, no Rogar:** Admite el retraso brevemente ("Se me pasó", "Llego tarde"), pero no te arrastres pidiendo perdón.
+2. **Foco en el Deseo:** Lo importante es que te acordaste, no cuándo. Centra el 80% del mensaje en los buenos deseos.
+3. **Cero Excusas Baratas:** Evita inventar historias complejas. La honestidad o el humor ("soy un desastre con las fechas") funcionan mejor.
+4. **Emoji:** Usa 🐢, 🙈 o 🎉 para quitarle hierro al asunto.`;
+  } else if (tone === "desesperado-light") {
+    toneInstruction = `\n### REGLA DE ESTILO: VULNERABILIDAD DIGNA (NO PATÉTICA)
+1. **Honestidad sin Súplica:** Expresa que te importa o que extrañas, pero sin rogar atención.
+2. **Brevedad:** La desesperación larga cansa. La corta impacta. Sé conciso.
+3. **Dignidad:** Muestra tu sentimiento, pero mantén tu valor. No te rebajes.
+4. **Emoji:** Usa 😔, 🥀 o 💔 (uno solo).`;
+  } else if (tone === "romántico") {
+    const isLigue = relationship && (relationship.toLowerCase().includes("ligue") || relationship.toLowerCase().includes("crush"));
+    toneInstruction = `\n### REGLA DE ESTILO: ROMANCE REAL (NO CLICHÉ)
+1. **Autenticidad:** Evita frases de tarjeta de regalo ("eres mi sol", "bajar la luna"). Habla de detalles específicos de la relación.
+2. **Intimidad:** Enfócate en cómo te hace sentir, no en halagos vacíos.
+3. **Equilibrio:** Sé cariñoso pero no empalagoso. Menos es más.
+${isLigue ? '4. **FRENO DE INTENSIDAD (LIGUE):** PROHIBIDO decir "te amo", "eres el amor de mi vida" o promesas eternas. Es un ligue, no un matrimonio. Sé coqueto pero no intenso.' : '4. **Emoji:** Usa ❤️, 🥰 o 🌹 con naturalidad.'}`;
+  } else if (tone === "corto") {
+    toneInstruction = `\n### REGLA DE ESTILO: BREVEDAD ABSOLUTA
+1. **Economía de Palabras:** Di lo máximo con lo mínimo. Elimina adjetivos innecesarios.
+2. **Impacto:** Frases contundentes.
+3. **Sin Relleno:** Nada de "espero que estés bien" o introducciones largas.
+4. **Longitud:** Máximo 2 oraciones.`;
+  }
+
+  // 6. CONSTRUCCIÓN DEL SYSTEM INSTRUCTION (REGLAS DE ORO)
+  const systemInstructionText = `
+### ROLE
+Eres el "Guardián de Sentimiento". Escribes EN NOMBRE DEL USUARIO para su CONTACTO.
+${intentionInstruction}
+
+### REGLAS DE ORO (ANTI-ALUCINACIÓN)
+0. **PRESENTE PURO:** Si no hay historial previo, PROHIBIDO asumir pasado (ej: "fuimos", "dijiste"). Tu relación empieza HOY.
+1. **SIN REPORTE CLIMÁTICO:** Prohibido mencionar sol, calor, brisa o nombres de ciudades (ej. Cartagena).
+2. **ADN LÉXICO:** ${preferredLexicon?.length > 0 ? (isDirect ? `Usa estas palabras SOLO si encajan con la brevedad: ${preferredLexicon.join(", ")}.` : `Usa obligatoriamente: ${preferredLexicon.join(", ")}.`) : "Usa lenguaje natural."}
+3. **FILTRO ANTI-ROBOT:** Si suena a poema o folleto de ventas, descártalo. Debe ser un WhatsApp real.
+${avoidTopics ? `4. **TEMAS A EVITAR:** No menciones ${avoidTopics}.` : ""}
+${isDirect ? `5. **CERO POESÍA (CRÍTICO):** Al ser tono DIRECTO, ignora cualquier instrucción de "buscar emoción". Prohibido usar metáforas, frases profundas o cursilerías. Sé práctico.` : ""}
+
+### JERARQUÍA DE ESTILO (ORDEN DE IMPORTANCIA)
+${styleInstructions ? `1. PRIORIDAD TOTAL: ${styleInstructions}` : ""}
+${toneInstruction ? `2. SEGUNDA PRIORIDAD: ${toneInstruction}` : ""}
+${lastUserStyle ? `3. REFERENCIA DE ESTILO: "${lastUserStyle}" (No usar si contradice los puntos 1 y 2).` : ""}
+
+### CONTEXTO DINÁMICO
+- Salud Relacional: ${relationalHealth}/10. ${relationalHealth > 8 ? "Confianza alta/Humor." : "Cuidado/Vulnerabilidad."}
+- Género Gramatical: ${grammaticalGender || "neutral"}.
+${energyInstruction}
+${timeInstruction}
+${occasion === "perdoname" ? `\n### PERDÓN: El usuario pide disculpas. FOCO: "Lo siento", "Me equivoqué". ${apologyReason ? `Motivo: ${apologyReason}` : ""}` : ""}
+`.trim();
+
+  // 7. PROMPT DE USUARIO (DATOS PUROS)
+  const promptText = `
+### INPUT DATA
+- Relationship: ${relationship} | Occasion: ${occasion}
+- Context: ${contextWords || "N/A"}
+- Received: "${receivedText || "N/A"}"
+- RegionalContext: ${regionalBoost}
+${formatInstruction || ""}
+`.trim();
+
+  // 8. CONFIGURACIÓN DE GENERACIÓN (TEMPERATURA DINÁMICA)
+  let targetTemperature = 0.35;
+  if (creativityLevel === "high") targetTemperature = 0.55;
+  if (isDirect || creativityLevel === "low") targetTemperature = 0.25;
+
+  const selectedModel = modelOverride || aiConfig.model || "gemini-1.5-flash";
+
+  return {
+    model: genAI.getGenerativeModel({
+      model: selectedModel,
+      systemInstruction: selectedModel.toLowerCase().includes("gemma")
+        ? undefined
+        : systemInstructionText,
+    }),
+    finalPrompt: selectedModel.toLowerCase().includes("gemma")
+      ? `[SYSTEM]\n${systemInstructionText}\n\n[USER]\n${promptText}`
+      : promptText,
+    generationConfig: {
+      temperature: targetTemperature,
+      topP: 0.85,
+      topK: 40,
+    },
+    safetySettings: [
+      { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
+      { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
+    ],
+    selectedModel,
+    systemInstructionText,
+    promptText,
+  };
 };
 
 const generate = async (aiConfig, data) => {
-  // 1. GESTIÓN DE CACHÉ
   const cacheKey = crypto
     .createHash("md5")
     .update(JSON.stringify(data, Object.keys(data).sort()))
@@ -216,68 +258,57 @@ const generate = async (aiConfig, data) => {
   }
 
   try {
-    const { model, finalPrompt, generationConfig, safetySettings, selectedModel, systemInstructionText, promptText } = prepareRequest(aiConfig, data);
+    const {
+      model,
+      finalPrompt,
+      generationConfig,
+      safetySettings,
+      selectedModel,
+      systemInstructionText,
+      promptText,
+    } = prepareRequest(aiConfig, data);
 
-    // --- LOGGING: Registro del Prompt enviado ---
     logger.info(`🤖 AI Request [${selectedModel}]`, {
-      model: selectedModel,
-      grammaticalGender: data.grammaticalGender,
       intention: data.intention,
-      systemInstruction: selectedModel.toLowerCase().includes("gemma") ? "Injected in prompt" : systemInstructionText,
-      userPrompt: promptText
+      tone: data.tone,
     });
 
-    // 6. EJECUCIÓN
-    const result = await model.generateContentStream({
+    const result = await model.generateContent({
       contents: [{ role: "user", parts: [{ text: finalPrompt }] }],
       generationConfig,
       safetySettings,
     });
 
-    let generatedText = '';
-    for await (const chunk of result.stream) {
-      generatedText += chunk.text();
-    }
+    const generatedText = result.response.text();
 
-    // --- LOGGING: Registro de la Respuesta recibida ---
     logger.info(`✨ AI Response [${selectedModel}]`, {
-      model: selectedModel,
-      response: generatedText
+      response: generatedText,
     });
 
-    // 7. PERSISTENCIA Y MÉTRICAS
-    responseCache.set(cacheKey, {
-      text: generatedText,
-      timestamp: Date.now(),
-    });
-
-    // Registrar uso del modelo para el orquestador
+    responseCache.set(cacheKey, { text: generatedText, timestamp: Date.now() });
     await SystemUsage.increment(selectedModel);
 
     return generatedText;
   } catch (error) {
-    logger.error("Error en AIService", {
-      model: modelOverride,
-      error: error.message,
-      stack: error.stack,
-    });
-
-    const errorMessage = error.message?.toLowerCase() || "";
-
-    // Si el error es de cuota (429), lo lanzamos para que el Controller active el fallback
-    if (errorMessage.includes("429") || errorMessage.includes("quota") || errorMessage.includes("exhausted")) {
+    logger.error("Error en AIService", { error: error.message });
+    if (error.message.includes("429") || error.message.includes("quota")) {
       const quotaError = new Error("QUOTA_EXCEEDED");
       quotaError.statusCode = 429;
       throw quotaError;
     }
-
-    throw new Error("La IA no pudo completar la solicitud en este momento.");
+    throw new Error("La IA no pudo completar la solicitud.");
   }
 };
 
 const generateStream = async function* (aiConfig, data) {
   try {
-    const { model, finalPrompt, generationConfig, safetySettings, selectedModel } = prepareRequest(aiConfig, data);
+    const {
+      model,
+      finalPrompt,
+      generationConfig,
+      safetySettings,
+      selectedModel,
+    } = prepareRequest(aiConfig, data);
 
     const result = await model.generateContentStream({
       contents: [{ role: "user", parts: [{ text: finalPrompt }] }],
@@ -286,22 +317,11 @@ const generateStream = async function* (aiConfig, data) {
     });
 
     for await (const chunk of result.stream) {
-      const chunkText = chunk.text();
-      yield chunkText;
+      yield chunk.text();
     }
-
-    // Registrar uso del modelo
     await SystemUsage.increment(selectedModel);
-
   } catch (error) {
     logger.error("Error en AIService Stream", { error: error.message });
-    
-    const errorMessage = error.message?.toLowerCase() || "";
-    if (errorMessage.includes("429") || errorMessage.includes("quota") || errorMessage.includes("exhausted")) {
-      const quotaError = new Error("QUOTA_EXCEEDED");
-      quotaError.statusCode = 429;
-      throw quotaError;
-    }
     throw error;
   }
 };
