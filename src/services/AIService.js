@@ -89,6 +89,12 @@ const prepareRequest = (aiConfig, data) => {
     occasionInstruction = `\n  ### COHERENCIA DE OCASIÓN (PERDÓN)\n  El usuario es quien PIDE PERDÓN. El mensaje debe expresar arrepentimiento, asumir responsabilidad y buscar la reconciliación.${reasonText} PROHIBIDO redactar como si el usuario estuviera perdonando al destinatario. El foco es: "Lo siento", "Perdóname", "Me equivoqué".`;
   }
 
+  // 2.9. COHERENCIA DE TONO (Directo)
+  let toneInstruction = "";
+  if (tone === "directo") {
+    toneInstruction = `\n  ### COHERENCIA DE TONO (DIRECTO)\n  ESTILO: "Directo y Sincronizado".\n  1. **Apertura:** Salta protocolos innecesarios. Ve directo al saludo breve y al grano.\n  2. **Anclaje Temporal:** Si el contexto menciona 'hoy', 'mañana', 'el partido', 'el cumpleaños' o cualquier evento, el mensaje DEBE centrarse en ese contexto.\n  3. **Efecto Espejo:** Si el input es corto, la respuesta es corta. No uses rellenos como "Espero que estés bien".\n  Ejemplo: Si el contexto es 'mañana' y 'partido', el mensaje debe ser: "¿Qué hay para lo del partido de mañana?" o "¿Cómo va lo del partido de mañana?".`;
+  }
+
   // 3. CONSTRUCCIÓN DEL SYSTEM INSTRUCTION (Reglas de Oro)
   const systemInstructionText = `
   ### ROLE
@@ -117,6 +123,7 @@ ${intentionInstruction}
   ${energyInstruction}
   ${timeInstruction}
   ${occasionInstruction}
+  ${toneInstruction}
 
   ### MODOS DE OPERACIÓN SEGÚN PLAN
   - **PLAN GUEST/FREEMIUM:** Mensaje breve (max 2 párrafos) + un "GUARDIAN_INSIGHT" (un consejo psicológico breve sobre por qué este mensaje ayuda a la relación).
