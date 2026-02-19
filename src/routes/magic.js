@@ -242,6 +242,34 @@ router.post("/generate-stream", getUser, async (req, res) => {
   }
 });
 
+// POST /api/magic/generate-image
+router.post("/generate-image", getUser, async (req, res, next) => {
+  const { prompt } = req.body;
+  const user = req.user;
+
+  if (!prompt) {
+    return res.status(400).json({ error: "El prompt es obligatorio" });
+  }
+
+  try {
+    const aiConfig = PlanService.getAIConfig(user.planLevel);
+    const imageModel = AIOrchestrator.MODELS.IMAGE;
+
+    const result = await AIService.generateImage(
+      { ...aiConfig, model: imageModel },
+      { prompt }
+    );
+
+    if (user.incrementUsage) {
+      await user.incrementUsage();
+    }
+
+    res.json({ result });
+  } catch (error) {
+    next(error);
+  }
+});
+
 // POST /api/magic/mark-used - Feedback Loop (Cerrar el ciclo de aprendizaje)
 router.post("/mark-used", getUser, async (req, res) => {
   const { contactId, content, originalContent, occasion, tone } = req.body;

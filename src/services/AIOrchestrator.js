@@ -9,6 +9,8 @@ const MODELS = {
   GEMINI_25: process.env.AI_MODEL_GEMINI_25 || "gemini-2.5-flash",
   GEMINI_LITE: process.env.AI_MODEL_GEMINI_LITE || "gemini-2.5-flash-lite",  // --- MODELO DE AUDIO (Si llegas a usar notas de voz) ---
   AUDIO: "gemini-2.5-flash-native-audio-latest",
+  // --- MODELO DE IMAGEN (Para futuras implementaciones) ---
+  IMAGE: "imagen-3.0-generate-001",
 };
 
 const QUOTAS = {
@@ -28,8 +30,8 @@ const getInitialStrategy = async (planLevel, relationalHealth = 5) => {
   if (planLevel === "premium") {
     if (relationalHealth >= 8) {
       const geminiTier = [
-        MODELS.GEMINI_3,
         MODELS.GEMINI_25,
+        MODELS.GEMINI_3,
         MODELS.GEMINI_LITE,
       ];
       for (const modelId of geminiTier) {

@@ -326,4 +326,21 @@ const generateStream = async function* (aiConfig, data) {
   }
 };
 
-module.exports = { generate, generateStream };
+const generateImage = async (aiConfig, { prompt }) => {
+  try {
+    const selectedModel = aiConfig.model || "imagen-3.0-generate-001";
+    logger.info(`🎨 AI Image Request [${selectedModel}]`, { prompt });
+
+    const model = genAI.getGenerativeModel({ model: selectedModel });
+
+    const result = await model.generateContent(prompt);
+
+    logger.info(`✨ AI Image Response [${selectedModel}]`);
+    return result.response;
+  } catch (error) {
+    logger.error("Error en AIService Image", { error: error.message });
+    throw error;
+  }
+};
+
+module.exports = { generate, generateStream, generateImage };
