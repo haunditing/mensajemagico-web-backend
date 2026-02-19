@@ -174,8 +174,8 @@ const extractLexicalDNA = (original, edited) => {
   // Identificar palabras que el usuario AGREGÓ (no estaban en el original)
   const newWords = editedArr.filter((w) => {
     if (originalSet.has(w)) return false;
-    // Si es un emoji (no tiene letras), lo incluimos siempre. Si es palabra, filtramos las muy cortas.
-    return (!/[a-záéíóúñü]/i.test(w) || w.length > 2) && !STOP_WORDS.has(w);
+    // Filtrar emojis (debe tener letras) y palabras muy cortas (letras solas o de 2 caracteres)
+    return /[a-záéíóúñü]/i.test(w) && w.length > 2 && !STOP_WORDS.has(w);
   });
 
   // Identificar expresiones cortas (bigramas) que podrían ser muletillas (ej: "pues si", "ya ves")
