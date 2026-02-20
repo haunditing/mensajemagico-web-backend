@@ -43,7 +43,8 @@ const allowedOrigins = [
   "https://www.mensajemagico.com",
   "https://mensajemagico.com",
   "http://localhost:5173", // Vite default
-  "http://localhost:4174", // Vite default 2
+  "http://localhost:4173", // Vite default 2
+  "http://localhost:4174", // Vite default 3
   "http://localhost:3000", // Next.js / CRA default
   "http://192.168.1.10:5173", // Tu IP local para pruebas en red
 ].filter(Boolean);

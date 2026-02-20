@@ -226,6 +226,9 @@ router.post("/forgot-password", authLimiter, async (req, res) => {
     clientUrl = clientUrl || req.headers.origin;
     const resetUrl = `${clientUrl}/reset-password/${resetToken}`;
 
+    // DEBUG: Imprimir la URL generada en los logs para verificarla
+    logger.info(`Recuperación solicitada para ${email}. URL generada: ${resetUrl}`);
+
     // Enviar email real
     await EmailService.sendPasswordResetEmail(email, resetUrl);
 

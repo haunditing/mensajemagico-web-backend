@@ -104,6 +104,31 @@ router.put("/:id", authenticate, async (req, res) => {
   }
 });
 
+// POST /api/contacts/:id/reset - Reiniciar análisis de contacto
+router.post("/:id/reset", authenticate, async (req, res) => {
+  try {
+    const contact = await Contact.findOne({ _id: req.params.id, userId: req.userId });
+    if (!contact) return res.status(404).json({ error: "Contacto no encontrado" });
+
+    // Reiniciar valores a estado inicial
+    contact.relationalHealth = 5;
+    contact.snoozeCount = 0;
+    contact.history = [];
+    contact.guardianMetadata = {
+      preferredLexicon: [],
+      lastUserStyle: "",
+      editFrictionHistory: [],
+      trained: false
+    };
+    contact.lastInteraction = new Date();
+
+    await contact.save();
+    res.json(contact);
+  } catch (error) {
+    res.status(500).json({ error: "Error al reiniciar contacto" });
+  }
+});
+
 // DELETE /api/contacts/:id - Eliminar contacto
 router.delete("/:id", authenticate, async (req, res) => {
   try {

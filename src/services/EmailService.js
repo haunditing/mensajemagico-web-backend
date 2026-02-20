@@ -2,13 +2,25 @@ const nodemailer = require("nodemailer");
 const logger = require("../utils/logger");
 
 // Configuración del transportador
-const transporter = nodemailer.createTransport({
-  service: "gmail", // Para SendGrid u otros, elimina esta línea y usa host/port
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS, // ¡Usa una App Password de Google!
-  },
-});
+const transporterConfig = process.env.EMAIL_HOST
+  ? {
+      host: process.env.EMAIL_HOST,
+      port: Number(process.env.EMAIL_PORT) || 587,
+      secure: process.env.EMAIL_SECURE === "true", // true para 465, false para otros
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS,
+      },
+    }
+  : {
+      service: "gmail",
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS,
+      },
+    };
+
+const transporter = nodemailer.createTransport(transporterConfig);
 
 const sendPasswordResetEmail = async (to, resetUrl) => {
   const mailOptions = {
@@ -25,6 +37,7 @@ const sendPasswordResetEmail = async (to, resetUrl) => {
         </div>
         <p style="color: #666; font-size: 14px;">Este enlace expirará en 1 hora por seguridad.</p>
         <p style="color: #999; font-size: 12px; margin-top: 20px; border-top: 1px solid #eee; padding-top: 10px;">Si no solicitaste este cambio, puedes ignorar este correo tranquilamente.</p>
+        <p style="font-size: 12px; color: #666; margin-top: 15px; word-break: break-all;">Si el botón no funciona, copia y pega este enlace:<br/>${resetUrl}</p>
       </div>
     `,
   };
