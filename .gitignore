@@ -1,4 +1,5 @@
-node_modules
+# Dependencias
+node_modules/
 .env
 .DS_Store
 npm-debug.log
@@ -6,3 +7,6 @@ dist
 coverage
 .vscode
 logs/
+
+# Archivos subidos (Fotos de perfil)
+uploads/

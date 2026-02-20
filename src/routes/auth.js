@@ -16,14 +16,6 @@ const path = require("path");
 const fs = require("fs");
 const sharp = require("sharp");
 
-// Configuración de Multer para subir imágenes
-const uploadDir = path.join(__dirname, "../../uploads/profiles");
-
-// Asegurar que el directorio exista
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
-}
-
 const storage = multer.memoryStorage();
 
 const upload = multer({
@@ -289,11 +281,27 @@ router.post("/reset-password/:token", authLimiter, async (req, res) => {
 router.put("/profile", authenticate, uploadLimiter, upload.single("profilePicture"), async (req, res) => {
   try {
     // Nota: Con multer, req.body tendrá los campos de texto y req.file el archivo
-    const { name, location, neutralMode, notificationsEnabled, grammaticalGender, avatarColor } = req.body;
+    const { name, location, neutralMode, notificationsEnabled, grammaticalGender, avatarColor, deleteProfilePicture } = req.body;
     const user = await User.findById(req.userId);
 
     if (!user) {
       return res.status(404).json({ error: "Usuario no encontrado" });
+    }
+
+    // 0. Eliminar foto si se solicita
+    if (deleteProfilePicture === "true" || deleteProfilePicture === true) {
+      // Limpieza: Si antes tenía una imagen local (ruta antigua), intentamos borrarla
+      if (user.profilePicture && user.profilePicture.startsWith("/uploads")) {
+        const oldPath = path.join(__dirname, "../../", user.profilePicture);
+        if (fs.existsSync(oldPath)) {
+          try {
+            fs.unlinkSync(oldPath);
+          } catch (err) {
+            logger.warn(`No se pudo eliminar la imagen anterior: ${oldPath}`);
+          }
+        }
+      }
+      user.profilePicture = "";
     }
 
     // 1. Validaciones PREVIAS (Antes de procesar imagen)
@@ -328,16 +336,16 @@ router.put("/profile", authenticate, uploadLimiter, upload.single("profilePictur
         return res.status(400).json({ error: "El archivo no es una imagen válida o está corrupto." });
       }
 
-      // Procesar imagen con Sharp (Resize 500x500 + WebP)
-      const filename = `${req.userId}-${Date.now()}.webp`;
-      const filePath = path.join(uploadDir, filename);
-
-      await sharp(req.file.buffer)
+      // Procesar imagen con Sharp (Resize 500x500 + WebP) -> A Buffer
+      const imageBuffer = await sharp(req.file.buffer)
         .resize(500, 500, { fit: "cover" }) // Recorta para llenar el cuadrado sin deformar
         .webp({ quality: 80 }) // Convierte a WebP con 80% de calidad
-        .toFile(filePath);
+        .toBuffer();
 
-      // Borrar imagen anterior si existe y es local
+      // Convertir a Base64 (Data URI)
+      const base64Image = `data:image/webp;base64,${imageBuffer.toString("base64")}`;
+
+      // Limpieza: Si antes tenía una imagen local (ruta antigua), intentamos borrarla
       if (user.profilePicture && user.profilePicture.startsWith("/uploads")) {
         const oldPath = path.join(__dirname, "../../", user.profilePicture);
         if (fs.existsSync(oldPath)) {
@@ -348,8 +356,9 @@ router.put("/profile", authenticate, uploadLimiter, upload.single("profilePictur
           }
         }
       }
-      // Guardamos la ruta relativa para servirla estáticamente luego
-      user.profilePicture = `/uploads/profiles/${filename}`;
+      
+      // Guardamos la imagen directamente en la BD
+      user.profilePicture = base64Image;
     }
 
     if (name !== undefined) {
@@ -389,7 +398,7 @@ router.put("/profile", authenticate, uploadLimiter, upload.single("profilePictur
 
     // Construir URL completa para verificación
     const profilePictureUrl = user.profilePicture
-      ? `${req.protocol}://${req.get("host")}${user.profilePicture}`
+      ? (user.profilePicture.startsWith("data:") ? "Base64 Image" : `${req.protocol}://${req.get("host")}${user.profilePicture}`)
       : null;
 
     res.json({ message: "Perfil actualizado", user, profilePictureUrl });
