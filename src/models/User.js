@@ -3,6 +3,8 @@ const PLAN_CONFIG = require("../config/plans");
 
 const UserSchema = new mongoose.Schema({
   email: { type: String, required: true, unique: true },
+  name: { type: String },
+  profilePicture: { type: String, default: "" },
   stripeCustomerId: { type: String },
   subscriptionId: { type: String }, // ID de la suscripción activa en Stripe
   role: { type: String, default: "user" },
