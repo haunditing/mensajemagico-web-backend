@@ -31,6 +31,7 @@ const UserSchema = new mongoose.Schema({
       enum: ["male", "female", "neutral"],
       default: "neutral",
     },
+    avatarColor: { type: String, default: "blue" },
   },
 
   // Control de uso

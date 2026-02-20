@@ -289,17 +289,37 @@ router.post("/reset-password/:token", authLimiter, async (req, res) => {
 router.put("/profile", authenticate, uploadLimiter, upload.single("profilePicture"), async (req, res) => {
   try {
     // Nota: Con multer, req.body tendrá los campos de texto y req.file el archivo
-    const { name, location, neutralMode, notificationsEnabled, grammaticalGender } = req.body;
+    const { name, location, neutralMode, notificationsEnabled, grammaticalGender, avatarColor } = req.body;
     const user = await User.findById(req.userId);
 
     if (!user) {
       return res.status(404).json({ error: "Usuario no encontrado" });
     }
 
+    // 1. Validaciones PREVIAS (Antes de procesar imagen)
+    if (name !== undefined) {
+      if (typeof name !== "string" || name.trim().length === 0) {
+        return res.status(400).json({ error: "El nombre no puede estar vacío." });
+      }
+    }
+
+    if (location !== undefined && location) {
+      if (typeof location !== "string" || location.length > 50) {
+        return res.status(400).json({
+          error: "La ubicación debe ser texto y no exceder los 50 caracteres.",
+        });
+      }
+      const validLocationRegex = /^[a-zA-Z0-9\s,.\-áéíóúÁÉÍÓÚñÑüÜ]+$/;
+      if (!validLocationRegex.test(location)) {
+        return res.status(400).json({ error: "La ubicación contiene caracteres no válidos." });
+      }
+    }
+
     // Si se subió una imagen, actualizamos el campo en la BD
     if (req.file) {
       // Validación de seguridad: Verificar Magic Numbers (Firma del archivo)
       const header = req.file.buffer.subarray(0, 12).toString("hex").toUpperCase();
+
       const isJpeg = header.startsWith("FFD8FF");
       const isPng = header.startsWith("89504E470D0A1A0A");
       const isWebp = header.startsWith("52494646") && header.slice(16, 24) === "57454250"; // RIFF...WEBP
@@ -333,26 +353,11 @@ router.put("/profile", authenticate, uploadLimiter, upload.single("profilePictur
     }
 
     if (name !== undefined) {
-      if (typeof name !== "string" || name.trim().length === 0) {
-        return res.status(400).json({ error: "El nombre no puede estar vacío." });
-      }
       user.name = name.trim();
     }
 
     // Permitir borrar la ubicación enviando string vacío o null
     if (location !== undefined) {
-      if (location) {
-        if (typeof location !== "string" || location.length > 50) {
-          return res.status(400).json({
-            error: "La ubicación debe ser texto y no exceder los 50 caracteres.",
-          });
-        }
-        // Validación de caracteres permitidos (Letras, espacios, comas, puntos, guiones)
-        const validLocationRegex = /^[a-zA-Z0-9\s,.\-áéíóúÁÉÍÓÚñÑüÜ]+$/;
-        if (!validLocationRegex.test(location)) {
-          return res.status(400).json({ error: "La ubicación contiene caracteres no válidos." });
-        }
-      }
       user.location = location;
     }
 
@@ -374,8 +379,20 @@ router.put("/profile", authenticate, uploadLimiter, upload.single("profilePictur
       user.preferences.grammaticalGender = grammaticalGender;
     }
 
+    // Actualizar preferencia de Color de Avatar
+    if (avatarColor) {
+      if (!user.preferences) user.preferences = {};
+      user.preferences.avatarColor = avatarColor;
+    }
+
     await user.save();
-    res.json({ message: "Perfil actualizado", user });
+
+    // Construir URL completa para verificación
+    const profilePictureUrl = user.profilePicture
+      ? `${req.protocol}://${req.get("host")}${user.profilePicture}`
+      : null;
+
+    res.json({ message: "Perfil actualizado", user, profilePictureUrl });
   } catch (error) {
     logger.error("Error actualizando perfil", { error });
     res.status(500).json({ error: "Error al actualizar perfil" });
