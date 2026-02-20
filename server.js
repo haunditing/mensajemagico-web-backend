@@ -2,6 +2,7 @@ require("dotenv").config();
 const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
+const path = require("path");
 
 const paymentRoutes = require("./src/routes/payments");
 const magicRoutes = require("./src/routes/magic");
@@ -94,6 +95,9 @@ app.use("/api/contacts", contactsRoutes);
 app.use("/api/guardian", guardianRoutes);
 app.use("/api/logs", logsRoutes);
 app.use("/api/admin", adminRoutes);
+
+// Servir archivos estáticos (imágenes de perfil)
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 // Manejo de errores global
 app.use(errorHandler);

@@ -11,6 +11,32 @@ const PlanService = require("../services/PlanService");
 const logger = require("../utils/logger");
 const rateLimiter = require("../middleware/rateLimiter");
 const EmailService = require("../services/EmailService");
+const multer = require("multer");
+const path = require("path");
+const fs = require("fs");
+const sharp = require("sharp");
+
+// Configuración de Multer para subir imágenes
+const uploadDir = path.join(__dirname, "../../uploads/profiles");
+
+// Asegurar que el directorio exista
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+}
+
+const storage = multer.memoryStorage();
+
+const upload = multer({
+  storage,
+  limits: { fileSize: 5 * 1024 * 1024 }, // Límite de 5MB
+  fileFilter: (req, file, cb) => {
+    const filetypes = /jpeg|jpg|png|webp/;
+    const mimetype = filetypes.test(file.mimetype);
+    const extname = filetypes.test(path.extname(file.originalname).toLowerCase());
+    if (mimetype && extname) return cb(null, true);
+    cb(new Error("Solo se permiten imágenes (jpeg, jpg, png, webp)"));
+  },
+});
 
 // Middleware de autenticación local (verifica el JWT)
 const authenticate = (req, res, next) => {
@@ -36,10 +62,17 @@ const authLimiter = rateLimiter({
   message: "Demasiados intentos. Por favor, inténtalo de nuevo en 15 minutos.",
 });
 
+// Limitador específico para actualizaciones de perfil (Mitigación DoS en subida de archivos)
+const uploadLimiter = rateLimiter({
+  windowMs: 60 * 60 * 1000, // 1 hora
+  max: 10, // Máximo 10 actualizaciones por hora por IP
+  message: "Has excedido el límite de actualizaciones de perfil. Intenta más tarde.",
+});
+
 // 1. Registro (Signup)
 router.post("/signup", authLimiter, async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, password, name } = req.body;
 
     if (!email || !password) {
       return res.status(400).json({ error: "Email y contraseña requeridos" });
@@ -57,6 +90,7 @@ router.post("/signup", authLimiter, async (req, res) => {
 
     // Crear usuario (Plan por defecto: freemium)
     const newUser = new User({
+      name,
       email,
       password: hashedPassword, // Asegúrate de que esta línea esté presente
       planLevel: "freemium",
@@ -79,6 +113,7 @@ router.post("/signup", authLimiter, async (req, res) => {
       token,
       userId: newUser._id,
       planLevel: newUser.planLevel,
+      name: newUser.name,
     });
   } catch (error) {
     logger.error("Error en signup", {
@@ -123,6 +158,7 @@ router.post("/login", authLimiter, async (req, res) => {
       token,
       userId: user._id,
       planLevel: user.planLevel,
+      name: user.name,
     });
   } catch (error) {
     logger.error("Error en login", {
@@ -191,7 +227,12 @@ router.post("/forgot-password", authLimiter, async (req, res) => {
 
     // URL de recuperación (Ajusta la URL base según tu entorno)
     // Preferimos usar una variable de entorno para la URL del cliente si existe
-    const clientUrl = process.env.CLIENT_URL || req.headers.origin;
+    let clientUrl = process.env.CLIENT_URL;
+    if (clientUrl && clientUrl.includes(",")) {
+      clientUrl = clientUrl.split(",")[0].trim();
+    }
+    clientUrl = clientUrl || req.headers.origin;
+    const resetUrl = `${clientUrl}/reset-password/${resetToken}`;
 
     // Enviar email real
     await EmailService.sendPasswordResetEmail(email, resetUrl);
@@ -245,13 +286,57 @@ router.post("/reset-password/:token", authLimiter, async (req, res) => {
 });
 
 // 6. Actualizar Perfil (Ubicación manual)
-router.put("/profile", authenticate, async (req, res) => {
+router.put("/profile", authenticate, uploadLimiter, upload.single("profilePicture"), async (req, res) => {
   try {
-    const { location, neutralMode, notificationsEnabled, grammaticalGender } = req.body;
+    // Nota: Con multer, req.body tendrá los campos de texto y req.file el archivo
+    const { name, location, neutralMode, notificationsEnabled, grammaticalGender } = req.body;
     const user = await User.findById(req.userId);
 
     if (!user) {
       return res.status(404).json({ error: "Usuario no encontrado" });
+    }
+
+    // Si se subió una imagen, actualizamos el campo en la BD
+    if (req.file) {
+      // Validación de seguridad: Verificar Magic Numbers (Firma del archivo)
+      const header = req.file.buffer.subarray(0, 12).toString("hex").toUpperCase();
+      const isJpeg = header.startsWith("FFD8FF");
+      const isPng = header.startsWith("89504E470D0A1A0A");
+      const isWebp = header.startsWith("52494646") && header.slice(16, 24) === "57454250"; // RIFF...WEBP
+
+      if (!isJpeg && !isPng && !isWebp) {
+        return res.status(400).json({ error: "El archivo no es una imagen válida o está corrupto." });
+      }
+
+      // Procesar imagen con Sharp (Resize 500x500 + WebP)
+      const filename = `${req.userId}-${Date.now()}.webp`;
+      const filePath = path.join(uploadDir, filename);
+
+      await sharp(req.file.buffer)
+        .resize(500, 500, { fit: "cover" }) // Recorta para llenar el cuadrado sin deformar
+        .webp({ quality: 80 }) // Convierte a WebP con 80% de calidad
+        .toFile(filePath);
+
+      // Borrar imagen anterior si existe y es local
+      if (user.profilePicture && user.profilePicture.startsWith("/uploads")) {
+        const oldPath = path.join(__dirname, "../../", user.profilePicture);
+        if (fs.existsSync(oldPath)) {
+          try {
+            fs.unlinkSync(oldPath);
+          } catch (err) {
+            logger.warn(`No se pudo eliminar la imagen anterior: ${oldPath}`);
+          }
+        }
+      }
+      // Guardamos la ruta relativa para servirla estáticamente luego
+      user.profilePicture = `/uploads/profiles/${filename}`;
+    }
+
+    if (name !== undefined) {
+      if (typeof name !== "string" || name.trim().length === 0) {
+        return res.status(400).json({ error: "El nombre no puede estar vacío." });
+      }
+      user.name = name.trim();
     }
 
     // Permitir borrar la ubicación enviando string vacío o null
@@ -350,6 +435,20 @@ router.delete("/delete-account", authenticate, async (req, res) => {
   } catch (error) {
     logger.error("Error eliminando cuenta", { error });
     res.status(500).json({ error: "Error al eliminar la cuenta" });
+  }
+});
+
+// 9. Verificar disponibilidad de correo (Validación asíncrona)
+router.post("/check-email", async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ error: "Email requerido" });
+
+    const user = await User.findOne({ email });
+    res.json({ exists: !!user });
+  } catch (error) {
+    logger.error("Error verificando email", { error });
+    res.status(500).json({ error: "Error al verificar email" });
   }
 });
 
