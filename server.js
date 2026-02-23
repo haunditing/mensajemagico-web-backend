@@ -23,6 +23,9 @@ const errorHandler = require("./src/middleware/errorHandler");
 
 const app = express();
 
+// Confiar en el proxy (Necesario para Rate Limiter y evitar bucles de redirección HTTPS en la nube)
+app.set("trust proxy", 1);
+
 // Conexión a Mongo
 mongoose
   .connect(process.env.MONGO_URI)
