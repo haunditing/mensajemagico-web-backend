@@ -19,7 +19,10 @@ const transporterConfig = process.env.EMAIL_HOST
       family: 4,
     }
   : {
-      service: "gmail",
+      // Reemplazamos service: 'gmail' (que usa puerto 465 por defecto) por configuración explícita puerto 587
+      host: "smtp.gmail.com",
+      port: 587,
+      secure: false, // STARTTLS
       auth: {
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASS,
