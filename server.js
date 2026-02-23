@@ -52,7 +52,10 @@ const allowedOrigins = [
   "http://192.168.1.10:5173", // Tu IP local para pruebas en red
 ].filter(Boolean);
 
-logger.info(`CORS habilitado para: ${allowedOrigins.join(", ")}`);
+// Deduplicar orígenes para evitar logs repetidos
+const uniqueAllowedOrigins = [...new Set(allowedOrigins)];
+
+logger.info(`CORS habilitado para: ${uniqueAllowedOrigins.join(", ")}`);
 
 app.use(
   cors({
@@ -60,7 +63,7 @@ app.use(
       // Permitir solicitudes sin origen (como apps móviles, curl o Postman)
       if (!origin) return callback(null, true);
 
-      if (allowedOrigins.indexOf(origin) === -1) {
+      if (uniqueAllowedOrigins.indexOf(origin) === -1) {
         logger.warn(`CORS bloqueado para origen: ${origin}`);
         return callback(
           new Error("La política CORS no permite este origen"),
