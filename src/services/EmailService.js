@@ -24,6 +24,11 @@ const transporterConfig = process.env.EMAIL_HOST
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASS,
       },
+      // Timeouts y forzado de IPv4 también para el servicio por defecto
+      connectionTimeout: 20000,
+      greetingTimeout: 20000,
+      socketTimeout: 20000,
+      family: 4,
     };
 
 const transporter = nodemailer.createTransport(transporterConfig);
