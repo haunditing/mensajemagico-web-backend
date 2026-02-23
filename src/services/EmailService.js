@@ -12,8 +12,11 @@ const transporterConfig = process.env.EMAIL_HOST
         pass: process.env.EMAIL_PASS,
       },
       // Timeouts para evitar que la petición se quede colgada indefinidamente
-      connectionTimeout: 10000, // 10 segundos
-      greetingTimeout: 10000,
+      connectionTimeout: 20000, // Aumentado a 20s
+      greetingTimeout: 20000,
+      socketTimeout: 20000,
+      // FIX: Forzar IPv4 para evitar problemas de resolución DNS en producción (ETIMEDOUT)
+      family: 4,
     }
   : {
       service: "gmail",
