@@ -7,6 +7,7 @@ const transporterConfig = process.env.EMAIL_HOST
       host: process.env.EMAIL_HOST,
       port: Number(process.env.EMAIL_PORT) || 587,
       secure: process.env.EMAIL_SECURE === "true", // true para 465, false para otros
+      requireTLS: process.env.EMAIL_REQUIRE_TLS === "true", // Fuerza el uso de TLS
       auth: {
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASS,
@@ -23,6 +24,7 @@ const transporterConfig = process.env.EMAIL_HOST
       host: "smtp.gmail.com",
       port: 587,
       secure: false, // STARTTLS
+      requireTLS: true, // Fuerza el uso de TLS
       auth: {
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASS,
@@ -74,10 +76,10 @@ const sendPasswordResetEmail = async (to, resetUrl) => {
     await transporter.sendMail(mailOptions);
     logger.info(`Email de recuperación enviado a ${to}`);
   } catch (error) {
-    logger.error("Error enviando email", { 
+    logger.error("Error enviando email", {
       error,
       host: transporterConfig.host,
-      port: transporterConfig.port 
+      port: transporterConfig.port,
     });
     // No lanzamos error para no romper el flujo del controlador, pero queda registrado
   }
@@ -85,7 +87,9 @@ const sendPasswordResetEmail = async (to, resetUrl) => {
 
 const sendSubscriptionExpirationWarning = async (to, daysLeft, renewalDate) => {
   // Manejo de múltiples URLs en CLIENT_URL para obtener la base correcta
-  const baseUrl = process.env.CLIENT_URL ? process.env.CLIENT_URL.split(',')[0] : "https://www.mensajemagico.com";
+  const baseUrl = process.env.CLIENT_URL
+    ? process.env.CLIENT_URL.split(",")[0]
+    : "https://www.mensajemagico.com";
 
   const mailOptions = {
     from: `"Soporte MensajeMágico" <${process.env.EMAIL_USER}>`,
