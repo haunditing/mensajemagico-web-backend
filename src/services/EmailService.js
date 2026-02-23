@@ -11,6 +11,9 @@ const transporterConfig = process.env.EMAIL_HOST
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASS,
       },
+      // Timeouts para evitar que la petición se quede colgada indefinidamente
+      connectionTimeout: 10000, // 10 segundos
+      greetingTimeout: 10000,
     }
   : {
       service: "gmail",
@@ -21,6 +24,20 @@ const transporterConfig = process.env.EMAIL_HOST
     };
 
 const transporter = nodemailer.createTransport(transporterConfig);
+
+// Verificar conexión al iniciar (Ayuda a depurar en logs de despliegue)
+transporter.verify((error) => {
+  if (error) {
+    logger.error("Error de conexión SMTP al iniciar:", {
+      message: error.message,
+      code: error.code,
+      host: transporterConfig.host || "service:gmail",
+      port: transporterConfig.port,
+    });
+  } else {
+    logger.info("Servidor SMTP listo para enviar correos.");
+  }
+});
 
 const sendPasswordResetEmail = async (to, resetUrl) => {
   const mailOptions = {
@@ -46,7 +63,11 @@ const sendPasswordResetEmail = async (to, resetUrl) => {
     await transporter.sendMail(mailOptions);
     logger.info(`Email de recuperación enviado a ${to}`);
   } catch (error) {
-    logger.error("Error enviando email", { error });
+    logger.error("Error enviando email", { 
+      error,
+      host: transporterConfig.host,
+      port: transporterConfig.port 
+    });
     // No lanzamos error para no romper el flujo del controlador, pero queda registrado
   }
 };
