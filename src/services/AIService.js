@@ -174,6 +174,19 @@ ${isLigue ? '4. **FRENO DE INTENSIDAD (LIGUE):** PROHIBIDO decir "te amo", "eres
 2. **Impacto:** Frases contundentes.
 3. **Sin Relleno:** Nada de "espero que estés bien" o introducciones largas.
 4. **Longitud:** Máximo 2 oraciones.`;
+  } else if (tone === "orgulloso") {
+    toneInstruction = `\n### REGLA DE ESTILO: ORGULLO Y ADMIRACIÓN
+1. **Reconocimiento:** Resalta el esfuerzo y el logro. Haz que la otra persona se sienta vista y valorada.
+2. **Validación:** Usa frases como "sabía que podías", "te lo mereces", "qué orgullo".
+3. **Emoción:** Transmite alegría genuina por su éxito.
+4. **Personalización:** OBLIGATORIO incluir el nombre del destinatario (si está disponible). Si no hay nombre, usa "Campeón/a" o "Crack".
+5. **Emoji:** Usa 👏, 🏆 o 🌟.`;
+  } else if (tone === "entusiasta") {
+    toneInstruction = `\n### REGLA DE ESTILO: ENTUSIASMO CONTAGIOSO
+1. **Energía Alta:** Usa signos de exclamación y palabras potentes.
+2. **Celebración:** El tono debe ser festivo y vibrante.
+3. **Proyección:** Desea lo mejor para lo que viene.
+4. **Emoji:** Usa 🎉, 🥳 o 🚀.`;
   }
 
   // 6. REGLA DE APERTURA PARA CELEBRACIONES (NUEVO)
@@ -187,6 +200,7 @@ ${isLigue ? '4. **FRENO DE INTENSIDAD (LIGUE):** PROHIBIDO decir "te amo", "eres
     valentines: "OBLIGATORIO: El mensaje DEBE empezar con '¡Feliz San Valentín!' o '¡Feliz Día del Amor!'.",
     new_year: "OBLIGATORIO: El mensaje DEBE empezar con '¡Feliz Año Nuevo!'.",
     woman_day: "OBLIGATORIO: El mensaje DEBE empezar con '¡Feliz Día de la Mujer!'.",
+    felicitacion: "OBLIGATORIO: El mensaje DEBE empezar con '¡Felicidades!', '¡Felicitaciones!' o '¡Enhorabuena!'.",
   };
 
   if (celebrationMap[occasion]) {
