@@ -176,7 +176,24 @@ ${isLigue ? '4. **FRENO DE INTENSIDAD (LIGUE):** PROHIBIDO decir "te amo", "eres
 4. **Longitud:** Máximo 2 oraciones.`;
   }
 
-  // 6. CONSTRUCCIÓN DEL SYSTEM INSTRUCTION (REGLAS DE ORO)
+  // 6. REGLA DE APERTURA PARA CELEBRACIONES (NUEVO)
+  let celebrationInstruction = "";
+  const celebrationMap = {
+    birthday: "OBLIGATORIO: El mensaje DEBE empezar con '¡Feliz Cumpleaños!' o una variante muy cercana.",
+    anniversary: "OBLIGATORIO: El mensaje DEBE empezar con '¡Feliz Aniversario!' o una variante muy cercana.",
+    mothers_day: "OBLIGATORIO: El mensaje DEBE empezar con '¡Feliz Día de la Madre!' o '¡Feliz Día, Mamá!'.",
+    fathers_day: "OBLIGATORIO: El mensaje DEBE empezar con '¡Feliz Día del Padre!' o '¡Feliz Día, Papá!'.",
+    christmas: "OBLIGATORIO: El mensaje DEBE empezar con '¡Feliz Navidad!' o variantes festivas.",
+    valentines: "OBLIGATORIO: El mensaje DEBE empezar con '¡Feliz San Valentín!' o '¡Feliz Día del Amor!'.",
+    new_year: "OBLIGATORIO: El mensaje DEBE empezar con '¡Feliz Año Nuevo!'.",
+    woman_day: "OBLIGATORIO: El mensaje DEBE empezar con '¡Feliz Día de la Mujer!'.",
+  };
+
+  if (celebrationMap[occasion]) {
+    celebrationInstruction = `\n### REGLA DE APERTURA Y ENFOQUE (CELEBRACIÓN)\n${celebrationMap[occasion]}\n\n**ANTI-DESVÍO:** La creatividad debe estar en los elogios, no en cambiar de tema. PROHIBIDO hacer preguntas hipotéticas o random (ej. "¿Si pudieras teletransportarte...?"). El mensaje debe centrarse 100% en la celebración.`;
+  }
+
+  // 7. CONSTRUCCIÓN DEL SYSTEM INSTRUCTION (REGLAS DE ORO)
   const systemInstructionText = `
 ### ROLE
 Eres el "Guardián de Sentimiento". Escribes EN NOMBRE DEL USUARIO para su CONTACTO.
@@ -191,6 +208,7 @@ ${avoidTopics ? `4. **TEMAS A EVITAR:** No menciones ${avoidTopics}.` : ""}
 ${isDirect ? `5. **CERO POESÍA (CRÍTICO):** Al ser tono DIRECTO, ignora cualquier instrucción de "buscar emoción". Prohibido usar metáforas, frases profundas o cursilerías. Sé práctico.` : ""}
 
 ### JERARQUÍA DE ESTILO (ORDEN DE IMPORTANCIA)
+${celebrationInstruction ? `0. APERTURA OBLIGATORIA: ${celebrationInstruction}` : ""}
 ${styleInstructions ? `1. PRIORIDAD TOTAL: ${styleInstructions}` : ""}
 ${toneInstruction ? `2. SEGUNDA PRIORIDAD: ${toneInstruction}` : ""}
 ${lastUserStyle ? `3. REFERENCIA DE ESTILO: "${lastUserStyle}" (No usar si contradice los puntos 1 y 2).` : ""}
