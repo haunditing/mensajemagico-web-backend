@@ -34,6 +34,27 @@ const UserSchema = new mongoose.Schema({
     avatarColor: { type: String, default: "blue" },
   },
 
+  // Perfil de Esencia
+  essenceProfile: {
+    expressiveness: {
+      type: String,
+      enum: ["low", "medium", "high"],
+    },
+    intensity: {
+      type: String,
+      enum: ["soft", "balanced", "intense"],
+    },
+    pride: {
+      type: String,
+      enum: ["low", "medium", "high"],
+    },
+    style: {
+      type: String,
+      enum: ["direct", "indirect", "romantic", "firm"],
+    },
+  },
+  essenceCompleted: { type: Boolean, default: false },
+
   // Control de uso
   usage: {
     lastReset: { type: Date, default: Date.now },

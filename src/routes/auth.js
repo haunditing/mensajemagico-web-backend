@@ -481,4 +481,44 @@ router.post("/check-email", async (req, res) => {
   }
 });
 
+// 10. Guardar Esencia (Essence Profile)
+router.post("/essence", authenticate, async (req, res) => {
+  try {
+    const { expressiveness, intensity, pride, style } = req.body;
+
+    // Validar existencia de campos
+    if (!expressiveness || !intensity || !pride || !style) {
+      return res.status(400).json({ error: "Todos los campos son obligatorios" });
+    }
+
+    // Validar valores permitidos
+    const validExpressiveness = ["low", "medium", "high"];
+    const validIntensity = ["soft", "balanced", "intense"];
+    const validPride = ["low", "medium", "high"];
+    const validStyle = ["direct", "indirect", "romantic", "firm"];
+
+    if (
+      !validExpressiveness.includes(expressiveness) ||
+      !validIntensity.includes(intensity) ||
+      !validPride.includes(pride) ||
+      !validStyle.includes(style)
+    ) {
+      return res.status(400).json({ error: "Valores inválidos para el perfil de esencia" });
+    }
+
+    const user = await User.findById(req.userId);
+    if (!user) return res.status(404).json({ error: "Usuario no encontrado" });
+
+    user.essenceProfile = { expressiveness, intensity, pride, style };
+    user.essenceCompleted = true;
+
+    await user.save();
+
+    res.json({ message: "Esencia guardada exitosamente", user });
+  } catch (error) {
+    logger.error("Error guardando esencia", { error });
+    res.status(500).json({ error: "Error al guardar la esencia" });
+  }
+});
+
 module.exports = router;

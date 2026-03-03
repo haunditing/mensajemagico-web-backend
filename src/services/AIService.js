@@ -9,6 +9,31 @@ const genAI = new GoogleGenerativeAI(process.env.AI_API_KEY);
 const responseCache = new Map();
 const CACHE_TTL_MS = 1000 * 60 * 60;
 
+// Mapas de instrucciones para la Esencia (Personalidad del Usuario)
+const ESSENCE_MAPS = {
+  expressiveness: {
+    low: "Usa un lenguaje conciso, minimalista y directo. Evita adornos innecesarios.",
+    medium: "Equilibra la brevedad con el detalle. Usa estructuras de frases naturales y fluidas.",
+    high: "Sé muy descriptivo, usa lenguaje emotivo, metáforas y elabora profundamente sobre los sentimientos.",
+  },
+  intensity: {
+    soft: "Usa palabras suaves, tranquilizadoras y gentiles. Evita la dureza o la confrontación.",
+    balanced: "Mantén un peso emocional estable, centrado y maduro.",
+    intense: "Usa vocabulario fuerte, apasionado, dramático e impactante. No reprimas la emoción.",
+  },
+  pride: {
+    low: "Muestra humildad, vulnerabilidad y apertura. Prioriza los sentimientos del otro sobre el ego.",
+    medium: "Mantén el autorespeto y la asertividad mientras eres considerado y empático.",
+    high: "Proyecta alta autoestima y dignidad. No ruegues ni suenes desesperado. Mantén la compostura.",
+  },
+  style: {
+    direct: "Ve directo al grano. Sé claro y explícito. Evita la ambigüedad.",
+    indirect: "Sé sutil y diplomático. Usa sugerencias y matices en lugar de declaraciones frontales.",
+    romantic: "Usa lenguaje poético, cariñoso, soñador y lírico.",
+    firm: "Sé decisivo, autoritario y establece límites claros. Sin vacilaciones.",
+  },
+};
+
 const prepareRequest = (aiConfig, data) => {
   const {
     occasion,
@@ -32,6 +57,7 @@ const prepareRequest = (aiConfig, data) => {
     creativityLevel,
     greetingMoment,
     apologyReason,
+    essenceProfile,
   } = data;
 
   // 1. CONTEXTO REGIONAL
@@ -207,6 +233,28 @@ ${isLigue ? '4. **FRENO DE INTENSIDAD (LIGUE):** PROHIBIDO decir "te amo", "eres
     celebrationInstruction = `\n### REGLA DE APERTURA Y ENFOQUE (CELEBRACIÓN)\n${celebrationMap[occasion]}\n\n**ANTI-DESVÍO:** La creatividad debe estar en los elogios, no en cambiar de tema. PROHIBIDO hacer preguntas hipotéticas o random (ej. "¿Si pudieras teletransportarte...?"). El mensaje debe centrarse 100% en la celebración.`;
   }
 
+  // 7. PERFIL DE ESENCIA (PREMIUM - IDENTIDAD DE USUARIO)
+  let essenceInstruction = "";
+  if (essenceProfile) {
+    const instructions = [];
+    if (essenceProfile.expressiveness && ESSENCE_MAPS.expressiveness[essenceProfile.expressiveness]) {
+      instructions.push(`- Expresividad: ${ESSENCE_MAPS.expressiveness[essenceProfile.expressiveness]}`);
+    }
+    if (essenceProfile.intensity && ESSENCE_MAPS.intensity[essenceProfile.intensity]) {
+      instructions.push(`- Intensidad: ${ESSENCE_MAPS.intensity[essenceProfile.intensity]}`);
+    }
+    if (essenceProfile.pride && ESSENCE_MAPS.pride[essenceProfile.pride]) {
+      instructions.push(`- Orgullo: ${ESSENCE_MAPS.pride[essenceProfile.pride]}`);
+    }
+    if (essenceProfile.style && ESSENCE_MAPS.style[essenceProfile.style]) {
+      instructions.push(`- Estilo: ${ESSENCE_MAPS.style[essenceProfile.style]}`);
+    }
+
+    if (instructions.length > 0) {
+      essenceInstruction = `\nAdapta tu redacción a este perfil de personalidad:\n${instructions.join("\n")}`;
+    }
+  }
+
   // 7. CONSTRUCCIÓN DEL SYSTEM INSTRUCTION (REGLAS DE ORO)
   const systemInstructionText = `
 ### ROLE
@@ -223,9 +271,10 @@ ${isDirect ? `5. **CERO POESÍA (CRÍTICO):** Al ser tono DIRECTO, ignora cualqu
 
 ### JERARQUÍA DE ESTILO (ORDEN DE IMPORTANCIA)
 ${celebrationInstruction ? `0. APERTURA OBLIGATORIA: ${celebrationInstruction}` : ""}
-${styleInstructions ? `1. PRIORIDAD TOTAL: ${styleInstructions}` : ""}
-${toneInstruction ? `2. SEGUNDA PRIORIDAD: ${toneInstruction}` : ""}
-${lastUserStyle ? `3. REFERENCIA DE ESTILO: "${lastUserStyle}" (No usar si contradice los puntos 1 y 2).` : ""}
+${styleInstructions ? `1. PRIORIDAD TOTAL (GUARDIÁN): ${styleInstructions}` : ""}
+${essenceInstruction ? `2. IDENTIDAD DE USUARIO (ESENCIA): ${essenceInstruction}\n   (NOTA: Si la Esencia contradice al Guardián (Punto 1), obedece al Guardián).` : ""}
+${toneInstruction ? `3. TONO BASE: ${toneInstruction}` : ""}
+${lastUserStyle ? `4. REFERENCIA DE ESTILO: "${lastUserStyle}" (No usar si contradice los puntos anteriores).` : ""}
 
 ### CONTEXTO DINÁMICO
 - Salud Relacional: ${relationalHealth}/10. ${relationalHealth > 8 ? "Confianza alta/Humor." : "Cuidado/Vulnerabilidad."}

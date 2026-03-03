@@ -46,6 +46,7 @@ router.post("/generate", getUser, async (req, res, next) => {
     relationship,
     greetingMoment,
     apologyReason,
+    applyEssence,
   } = req.body;
 
   const user = req.user;
@@ -84,6 +85,12 @@ router.post("/generate", getUser, async (req, res, next) => {
       user.planLevel,
       guardianContext.relationalHealth,
       async (selectedModel) => {
+        // Preparar perfil de esencia si aplica (Solo Premium)
+        let essenceProfile = null;
+        if (user.planLevel === "premium" && applyEssence && user.essenceCompleted) {
+          essenceProfile = user.essenceProfile;
+        }
+
         // Configuramos la data para la IA incluyendo los nuevos metadatos de aprendizaje
         const generationData = {
           ...req.body,
@@ -97,6 +104,7 @@ router.post("/generate", getUser, async (req, res, next) => {
           // Inyectamos el aprendizaje del usuario
           lastUserStyle: guardianContext.lastUserStyle,
           preferredLexicon: guardianContext.preferredLexicon,
+          essenceProfile,
         };
 
         return await AIService.generate(aiConfig, generationData);
@@ -163,6 +171,7 @@ router.post("/generate-stream", getUser, async (req, res) => {
     relationship,
     greetingMoment,
     apologyReason,
+    applyEssence,
   } = req.body;
 
   const user = req.user;
@@ -193,6 +202,12 @@ router.post("/generate-stream", getUser, async (req, res) => {
       guardianContext = { ...guardianContext, ...context };
     }
 
+    // Preparar perfil de esencia si aplica (Solo Premium)
+    let essenceProfile = null;
+    if (user.planLevel === "premium" && applyEssence && user.essenceCompleted) {
+      essenceProfile = user.essenceProfile;
+    }
+
     // 3. Preparar datos
     const generationData = {
       ...req.body,
@@ -204,6 +219,7 @@ router.post("/generate-stream", getUser, async (req, res) => {
       grammaticalGender: user.preferences?.grammaticalGender || req.body.grammaticalGender,
       lastUserStyle: guardianContext.lastUserStyle,
       preferredLexicon: guardianContext.preferredLexicon,
+      essenceProfile,
     };
 
     // Headers para streaming de texto (Solo si pasamos las validaciones)
