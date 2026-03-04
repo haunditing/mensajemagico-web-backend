@@ -1,7 +1,6 @@
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 const crypto = require("crypto");
 const logger = require("../utils/logger");
-const RegionalContextService = require("./RegionalContextService");
 const SystemUsage = require("../models/SystemUsage");
 
 const genAI = new GoogleGenerativeAI(process.env.AI_API_KEY);
@@ -34,6 +33,115 @@ const ESSENCE_MAPS = {
   },
 };
 
+const getRegionalSyntaxHint = (userLocation, planLevel, neutralMode, styleSample = "") => {
+  if (planLevel !== "premium" || !userLocation || neutralMode) return "";
+
+  const loc = String(userLocation).toLowerCase();
+  const hasStyle = typeof styleSample === "string" && styleSample.trim().length > 0;
+  const strictSlangGuard = hasStyle
+    ? "No introduzcas verbos o jerga regional nueva; solo usa jerga si aparece literal en la muestra del usuario."
+    : "Sin muestra de estilo, limítate a pronominalización y sintaxis neutra sin jerga regional.";
+
+  if (/(argentina|buenos aires|caba|rosario|córdoba|mendoza|la plata)/.test(loc)) {
+    return `Ajuste regional invisible: usa voseo natural (vos/tenes) y sintaxis rioplatense solo si coincide con la voz del usuario. ${strictSlangGuard}`;
+  }
+  if (/(medell[ií]n|antioquia|pereira|manizales|armenia|risaralda|caldas|quind[ií]o)/.test(loc)) {
+    return `Ajuste regional invisible: asegura voseo paisa (vos) y sintaxis cercana solo si ya aparece en la voz del usuario. ${strictSlangGuard}`;
+  }
+  if (/(m[eé]xico|cdmx|df|guadalajara|monterrey|puebla|canc[uú]n)/.test(loc)) {
+    return `Ajuste regional invisible: usa tuteo natural y registro cercano, evitando modismos forzados. ${strictSlangGuard}`;
+  }
+  if (/(chile|santiago|valpara[ií]so|concepci[oó]n)/.test(loc)) {
+    return `Ajuste regional invisible: mantiene registro cercano y sobrio con sintaxis local neutra. ${strictSlangGuard}`;
+  }
+  if (/(per[uú]|lima|cusco|arequipa)/.test(loc)) {
+    return `Ajuste regional invisible: prioriza cortesia y suavidad sintactica sin frases estereotipadas. ${strictSlangGuard}`;
+  }
+  if (/(colombia|cartagena|barranquilla|santa marta|valledupar|bogot[aá]|cundinamarca)/.test(loc)) {
+    return `Ajuste regional invisible: usa sintaxis colombiana neutra y pronominalizacion consistente, sin etiquetas regionales explicitas. ${strictSlangGuard}`;
+  }
+
+  return "";
+};
+
+const buildStyleFingerprint = (styleSample) => {
+  if (!styleSample || !styleSample.trim()) return null;
+
+  const sample = styleSample.trim();
+
+  const letters = sample.match(/\p{L}/gu) || [];
+  const upper = sample.match(/\p{Lu}/gu) || [];
+  const lower = sample.match(/\p{Ll}/gu) || [];
+
+  let capitalization = "capitalización estándar";
+  if (letters.length > 0) {
+    if (upper.length === 0) capitalization = "todo en minúsculas (relajado)";
+    else if (lower.length === 0) capitalization = "todo en mayúsculas (intenso)";
+    else if (upper.length / letters.length > 0.35) capitalization = "mayúsculas frecuentes";
+    else if (upper.length / letters.length < 0.1) capitalization = "mayoría en minúsculas";
+  }
+
+  const emojiMatches = Array.from(
+    sample.matchAll(
+      /(?:\p{Extended_Pictographic}|\p{Emoji_Modifier}|\p{Regional_Indicator}|\u200D|\uFE0F)+/gu,
+    ),
+  );
+  const emojiCount = emojiMatches.length;
+
+  let emojiDensity = "sin emojis";
+  if (emojiCount === 1) emojiDensity = "un emoji ocasional";
+  else if (emojiCount <= 3) emojiDensity = "emojis moderados";
+  else if (emojiCount > 3) emojiDensity = "muchos emojis";
+
+  let emojiPlacement = "";
+  if (emojiCount > 0) {
+    const endsWithEmoji = /(?:\p{Extended_Pictographic}|\p{Emoji_Modifier}|\p{Regional_Indicator}|\u200D|\uFE0F)+\s*$/u.test(
+      sample,
+    );
+    emojiPlacement = endsWithEmoji ? "suelen ir al final" : "repartidos en el texto";
+  }
+
+  const commas = (sample.match(/,/g) || []).length;
+  const ellipses = (sample.match(/\.{3,}|…/g) || []).length;
+  const sentenceCount = (sample.match(/[.!?]+/g) || []).length || 1;
+  const wordCount = (sample.match(/\p{L}+/gu) || []).length;
+  const avgWords = sentenceCount ? wordCount / sentenceCount : wordCount;
+
+  const lengthProfile =
+    avgWords <= 6
+      ? "frases cortas y directas"
+      : avgWords <= 12
+        ? "frases medias"
+        : "frases largas y elaboradas";
+  const commaProfile =
+    commas >= 2
+      ? "usa comas con frecuencia"
+      : commas === 1
+        ? "usa comas ocasionalmente"
+        : "casi no usa comas";
+  const ellipsesProfile =
+    ellipses >= 2
+      ? "usa puntos suspensivos con frecuencia"
+      : ellipses === 1
+        ? "usa puntos suspensivos ocasionalmente"
+        : "no usa puntos suspensivos";
+
+  return [
+    `- Ritmo y puntuación: ${lengthProfile}; ${commaProfile}; ${ellipsesProfile}.`,
+    `- Densidad de emojis: ${emojiDensity}${emojiPlacement ? `; ${emojiPlacement}` : ""}.`,
+    `- Capitalización: ${capitalization}.`,
+  ].join("\n");
+};
+
+const softenForUserVoice = (text, hasUserVoice) => {
+  if (!text || !hasUserVoice) return text || "";
+  return text
+    .replace(/\bOBLIGATORIO\b/g, "SUGERIDO")
+    .replace(/\bDEBE\b/g, "conviene")
+    .replace(/\bPROHIBIDO\b/g, "evita")
+    .replace(/\bMÁXIMA PRIORIDAD\b/g, "prioridad contextual");
+};
+
 const prepareRequest = (aiConfig, data) => {
   const {
     occasion,
@@ -58,26 +166,28 @@ const prepareRequest = (aiConfig, data) => {
     greetingMoment,
     apologyReason,
     essenceProfile,
+    styleSample,
   } = data;
 
-  // 1. CONTEXTO REGIONAL
-  const regionalBoost = RegionalContextService.getRegionalBoost(
+  // 1. CONTEXTO REGIONAL (INVISIBLE: SOLO SINTAXIS/REGISTRO)
+  const regionalSyntaxHint = getRegionalSyntaxHint(
     userLocation,
     planLevel,
     neutralMode,
+    styleSample,
   );
 
   // 2. INTENCIÓN DEL GUARDIÁN (OBJETIVO PSICOLÓGICO)
   let intentionInstruction = "";
   const intentionMap = {
     low_effort:
-      "OBJETIVO: BAJO ESFUERZO. Mantén el vínculo con calidez pero sin generar carga cognitiva. No hagas preguntas.",
+      "OBJETIVO: BAJO ESFUERZO. Mantén cercanía con carga mínima; evita preguntas complejas.",
     inquiry:
-      "OBJETIVO: CONECTAR. Haz una pregunta interesante o muestra curiosidad genuina.",
+      "OBJETIVO: CONECTAR. Muestra curiosidad genuina y favorece continuidad conversacional.",
     resolutive:
-      "OBJETIVO: RESOLVER. Sé directo, propón opciones claras (A o B) y evita ambigüedad.",
+      "OBJETIVO: RESOLVER. Sé directo y propone opciones claras, sin ambigüedad.",
     action:
-      "OBJETIVO: IMPULSAR. Usa verbos imperativos suaves, sé persuasivo y directo.",
+      "OBJETIVO: IMPULSAR. Usa llamada a la acción suave, persuasiva y concreta.",
   };
 
   if (intention && intentionMap[intention]) {
@@ -98,7 +208,7 @@ const prepareRequest = (aiConfig, data) => {
       responseLength = "concisa";
     }
 
-    energyInstruction = `\n### ADAPTACIÓN DE ENERGÍA (ESPEJO)\nEl mensaje recibido es de ${receivedLength} caracteres. Tu respuesta DEBE ser **${responseLength}** para igualar la energía.`;
+    energyInstruction = `\n### ADAPTACIÓN DE ENERGÍA (ESPEJO)\nEl mensaje recibido tiene ${receivedLength} caracteres. Ajusta la respuesta a una longitud **${responseLength}** para mantener el mismo ritmo.`;
   }
 
   // 4. COHERENCIA TEMPORAL (AJUSTADA AL TONO)
@@ -125,112 +235,66 @@ const prepareRequest = (aiConfig, data) => {
     }
   }
 
-  // 5. COHERENCIA DE TONO (ELIMINA CURSILLERÍA Y SOLAPAMIENTOS)
+  // 5. COHERENCIA DE TONO (VERSIÓN COMPACTA)
   let toneInstruction = "";
+  const toneCompactMap = {
+    "sarcástico":
+      "Humor inteligente y ligero; evita ataques personales. Búrlate de la situación, no de la persona. Usa emojis con moderación.",
+    coqueto:
+      "Coqueteo sutil y respetuoso; sugiere más de lo que afirma. Evita lenguaje vulgar o explícito. Mantén elegancia natural.",
+    divertido:
+      "Humor contextual y fresco; evita chistes gastados. Suena espontáneo, no prefabricado. Prioriza naturalidad conversacional.",
+    sincero:
+      "Habla con verdad simple y directa. Evita melodrama o victimismo. Debe sentirse sereno y humano.",
+    formal:
+      "Registro correcto y respetuoso, sin rigidez burocrática. Prioriza claridad por encima de protocolo. Sonido profesional pero cercano.",
+    profundo:
+      "Profundidad clara, sin palabras rebuscadas. Conecta idea y emoción de forma concreta. Evita abstracción vacía.",
+    sutil:
+      "Sugiere sin forzar, dejando espacio de interpretación. La intención debe entenderse entre líneas. Mantén suavidad natural.",
+    atrasado:
+      "Reconoce el retraso brevemente y pasa a los buenos deseos. Evita excusas largas. Tono honesto y ligero.",
+    "desesperado-light":
+      "Muestra vulnerabilidad con dignidad. Expresa interés sin suplicar. Breve, emocional y con autocontrol.",
+    corto:
+      "Máxima brevedad y alto impacto. Evita relleno y rodeos. Idealmente 1 a 2 oraciones.",
+    orgulloso:
+      "Enfatiza reconocimiento, mérito y validación genuina. Si hay nombre disponible, úsalo para personalizar. Debe sonar celebratorio y cercano.",
+    entusiasta:
+      "Energía alta y optimista con ritmo ágil. Celebra y proyecta impulso positivo. Evita exageración artificial.",
+  };
+
   if (isDirect) {
-    toneInstruction = `\n### REGLA DE ESTILO: DIRECTO Y SINCRONIZADO (MÁXIMA PRIORIDAD)
-1. **Apertura:** Salta protocolos. Ve al punto inmediatamente.
-2. **Anclaje:** Si el contexto menciona eventos (hoy, mañana, partido, recoger, cumple), el mensaje DEBE centrarse en eso.
-3. **Cero Poesía:** Prohibido usar metáforas, frases profundas o cursilerías (ej. "mi refugio", "mi calma"). Sé práctico.
-4. **Filtro de Muletillas:** No uses "ajá" o jergas a menos que el usuario las incluya en el contexto.`;
-  } else if (tone === "sarcástico") {
-    toneInstruction = `\n### REGLA DE ESTILO: SARCASMO FINO (NO AGRESIVO)
-1. **Humor, no Odio:** El objetivo es hacer reír o señalar una ironía, NO herir ni insultar.
-2. **Inteligencia:** Usa juegos de palabras, exageraciones absurdas o subversión de expectativas.
-3. **Límite de Crueldad:** Evita ataques personales directos. Búrlate de la situación, no de la persona.
-4. **Emoji:** Usa 🙄, 🙃 o 💅 para marcar el tono.`;
-  } else if (tone === "coqueto") {
-    toneInstruction = `\n### REGLA DE ESTILO: COQUETO CON CLASE (NO VULGAR)
-1. **Sutileza:** El coqueteo debe ser un juego, no una exigencia. Usa el doble sentido con elegancia.
-2. **Respeto:** Evita comentarios explícitos sobre el cuerpo. Enfócate en la energía, la sonrisa o la inteligencia.
-3. **Misterio:** Deja algo a la imaginación. Es mejor sugerir que mostrar.
-4. **Emoji:** Usa 😉, 😏 o 🔥 con moderación.`;
-  } else if (tone === "divertido") {
-    toneInstruction = `\n### REGLA DE ESTILO: HUMOR FRESCO (NO CLICHÉS)
-1. **Originalidad:** Evita chistes de "papá", juegos de palabras gastados o memes antiguos.
-2. **Contextual:** El humor debe nacer de la situación actual, no ser un chiste genérico pegado.
-3. **Autenticidad:** Usa un tono conversacional y espontáneo.
-4. **Emoji:** Usa 😂, 🤣 o 💀 para marcar el tono.`;
-  } else if (tone === "sincero") {
-    toneInstruction = `\n### REGLA DE ESTILO: SINCERIDAD EQUILIBRADA (NO DRAMA)
-1. **Autenticidad:** Habla desde la verdad, pero sin exagerar sentimientos.
-2. **Claridad:** Di lo que sientes de forma simple y directa, sin rodeos poéticos innecesarios.
-3. **Cero Melodrama:** Evita frases de telenovela o victimización. La sinceridad es tranquila.
-4. **Emoji:** Usa 🙂, 🤍 o ✨ para suavizar.`;
-  } else if (tone === "formal") {
-    toneInstruction = `\n### REGLA DE ESTILO: FORMALIDAD CÁLIDA (NO ROBÓTICA)
-1. **Profesionalismo:** Usa un lenguaje correcto y estructurado, pero humano.
-2. **Cero Rigidez:** Evita sonar como un bot o un comunicado oficial antiguo. Usa "Hola" o "Estimado" según corresponda, pero no "Muy señor mío".
-3. **Claridad:** La cortesía no debe oscurecer el mensaje. Sé claro y respetuoso.
-4. **Emoji:** Usa 🤝, 📩 o ✅ si el contexto lo permite (mínimo).`;
-  } else if (tone === "profundo") {
-    toneInstruction = `\n### REGLA DE ESTILO: PROFUNDIDAD ACCESIBLE (NO PRETENCIOSA)
-1. **Claridad:** La profundidad está en la idea, no en palabras complicadas. Usa lenguaje sencillo.
-2. **Conexión:** Relaciona la reflexión con la experiencia compartida o la emoción del momento.
-3. **Cero Confusión:** Evita abstracciones vagas. Sé concreto en el sentimiento.
-4. **Emoji:** Usa 🌌, 🍃 o 🕯️ para dar atmósfera.`;
-  } else if (tone === "sutil") {
-    toneInstruction = `\n### REGLA DE ESTILO: SUTILEZA EFECTIVA (NO INVISIBLE)
-1. **Indirecta Clara:** Sugiere la intención sin decirla explícitamente, pero asegúrate de que se entienda entre líneas.
-2. **Ambigüedad Estratégica:** Deja espacio para que la otra persona interprete, pero guía esa interpretación.
-3. **Suavidad:** Usa palabras que quiten peso o presión (ej. "quizás", "de pronto", "me pareció").
-4. **Emoji:** Usa 👀, 🤔 o 🍃 para dejar la puerta abierta.`;
-  } else if (tone === "atrasado") {
-    toneInstruction = `\n### REGLA DE ESTILO: ATRASADO CON CLASE (NO CULPA TÓXICA)
-1. **Reconocer, no Rogar:** Admite el retraso brevemente ("Se me pasó", "Llego tarde"), pero no te arrastres pidiendo perdón.
-2. **Foco en el Deseo:** Lo importante es que te acordaste, no cuándo. Centra el 80% del mensaje en los buenos deseos.
-3. **Cero Excusas Baratas:** Evita inventar historias complejas. La honestidad o el humor ("soy un desastre con las fechas") funcionan mejor.
-4. **Emoji:** Usa 🐢, 🙈 o 🎉 para quitarle hierro al asunto.`;
-  } else if (tone === "desesperado-light") {
-    toneInstruction = `\n### REGLA DE ESTILO: VULNERABILIDAD DIGNA (NO PATÉTICA)
-1. **Honestidad sin Súplica:** Expresa que te importa o que extrañas, pero sin rogar atención.
-2. **Brevedad:** La desesperación larga cansa. La corta impacta. Sé conciso.
-3. **Dignidad:** Muestra tu sentimiento, pero mantén tu valor. No te rebajes.
-4. **Emoji:** Usa 😔, 🥀 o 💔 (uno solo).`;
+    toneInstruction =
+      "Ve al punto desde la primera frase. Ancla el mensaje al contexto real y evita metáforas o adornos innecesarios. Mantén un tono práctico.";
   } else if (tone === "romántico") {
-    const isLigue = relationship && (relationship.toLowerCase().includes("ligue") || relationship.toLowerCase().includes("crush"));
-    toneInstruction = `\n### REGLA DE ESTILO: ROMANCE REAL (NO CLICHÉ)
-1. **Autenticidad:** Evita frases de tarjeta de regalo ("eres mi sol", "bajar la luna"). Habla de detalles específicos de la relación.
-2. **Intimidad:** Enfócate en cómo te hace sentir, no en halagos vacíos.
-3. **Equilibrio:** Sé cariñoso pero no empalagoso. Menos es más.
-${isLigue ? '4. **FRENO DE INTENSIDAD (LIGUE):** PROHIBIDO decir "te amo", "eres el amor de mi vida" o promesas eternas. Es un ligue, no un matrimonio. Sé coqueto pero no intenso.' : '4. **Emoji:** Usa ❤️, 🥰 o 🌹 con naturalidad.'}`;
-  } else if (tone === "corto") {
-    toneInstruction = `\n### REGLA DE ESTILO: BREVEDAD ABSOLUTA
-1. **Economía de Palabras:** Di lo máximo con lo mínimo. Elimina adjetivos innecesarios.
-2. **Impacto:** Frases contundentes.
-3. **Sin Relleno:** Nada de "espero que estés bien" o introducciones largas.
-4. **Longitud:** Máximo 2 oraciones.`;
-  } else if (tone === "orgulloso") {
-    toneInstruction = `\n### REGLA DE ESTILO: ORGULLO Y ADMIRACIÓN
-1. **Reconocimiento:** Resalta el esfuerzo y el logro. Haz que la otra persona se sienta vista y valorada.
-2. **Validación:** Usa frases como "sabía que podías", "te lo mereces", "qué orgullo".
-3. **Emoción:** Transmite alegría genuina por su éxito.
-4. **Personalización:** OBLIGATORIO incluir el nombre del destinatario (si está disponible). Si no hay nombre, usa "Campeón/a" o "Crack".
-5. **Emoji:** Usa 👏, 🏆 o 🌟.`;
-  } else if (tone === "entusiasta") {
-    toneInstruction = `\n### REGLA DE ESTILO: ENTUSIASMO CONTAGIOSO
-1. **Energía Alta:** Usa signos de exclamación y palabras potentes.
-2. **Celebración:** El tono debe ser festivo y vibrante.
-3. **Proyección:** Desea lo mejor para lo que viene.
-4. **Emoji:** Usa 🎉, 🥳 o 🚀.`;
+    const isLigue =
+      relationship &&
+      (relationship.toLowerCase().includes("ligue") ||
+        relationship.toLowerCase().includes("crush"));
+    toneInstruction = isLigue
+      ? "Romántico suave y auténtico, sin promesas extremas ni intensidad desmedida. Enfócate en detalle emocional concreto y cercanía natural."
+      : "Romántico auténtico, evitando clichés de tarjeta. Habla desde sensaciones concretas y calidez real. Mantén equilibrio, sin empalago.";
+  } else if (toneCompactMap[tone]) {
+    toneInstruction = toneCompactMap[tone];
   }
 
-  // 6. REGLA DE APERTURA PARA CELEBRACIONES (NUEVO)
+  // 6. REGLA DE APERTURA PARA CELEBRACIONES (VERSIÓN COMPACTA)
   let celebrationInstruction = "";
   const celebrationMap = {
-    birthday: "OBLIGATORIO: El mensaje DEBE empezar con '¡Feliz Cumpleaños!' o una variante muy cercana.",
-    anniversary: "OBLIGATORIO: El mensaje DEBE empezar con '¡Feliz Aniversario!' o una variante muy cercana.",
-    mothers_day: "OBLIGATORIO: El mensaje DEBE empezar con '¡Feliz Día de la Madre!' o '¡Feliz Día, Mamá!'.",
-    fathers_day: "OBLIGATORIO: El mensaje DEBE empezar con '¡Feliz Día del Padre!' o '¡Feliz Día, Papá!'.",
-    christmas: "OBLIGATORIO: El mensaje DEBE empezar con '¡Feliz Navidad!' o variantes festivas.",
-    valentines: "OBLIGATORIO: El mensaje DEBE empezar con '¡Feliz San Valentín!' o '¡Feliz Día del Amor!'.",
-    new_year: "OBLIGATORIO: El mensaje DEBE empezar con '¡Feliz Año Nuevo!'.",
-    woman_day: "OBLIGATORIO: El mensaje DEBE empezar con '¡Feliz Día de la Mujer!'.",
-    felicitacion: "OBLIGATORIO: El mensaje DEBE empezar con '¡Felicidades!', '¡Felicitaciones!' o '¡Enhorabuena!'.",
+    birthday: "Abre con saludo de cumpleaños natural (ej. 'Feliz cumpleaños').",
+    anniversary: "Abre con saludo de aniversario natural (ej. 'Feliz aniversario').",
+    mothers_day: "Abre con saludo de Día de la Madre natural y cálido.",
+    fathers_day: "Abre con saludo de Día del Padre natural y cálido.",
+    christmas: "Abre con saludo navideño natural.",
+    valentines: "Abre con saludo de San Valentín natural.",
+    new_year: "Abre con saludo de Año Nuevo natural.",
+    woman_day: "Abre con saludo de Día de la Mujer natural y respetuoso.",
+    felicitacion: "Abre con felicitación directa y cercana.",
   };
 
   if (celebrationMap[occasion]) {
-    celebrationInstruction = `\n### REGLA DE APERTURA Y ENFOQUE (CELEBRACIÓN)\n${celebrationMap[occasion]}\n\n**ANTI-DESVÍO:** La creatividad debe estar en los elogios, no en cambiar de tema. PROHIBIDO hacer preguntas hipotéticas o random (ej. "¿Si pudieras teletransportarte...?"). El mensaje debe centrarse 100% en la celebración.`;
+    celebrationInstruction = `\n### REGLA DE APERTURA Y ENFOQUE (CELEBRACIÓN)\n${celebrationMap[occasion]}\nEnfoca el contenido en celebrar sin desviarte con temas aleatorios.`;
   }
 
   // 7. PERFIL DE ESENCIA (PREMIUM - IDENTIDAD DE USUARIO)
@@ -255,26 +319,61 @@ ${isLigue ? '4. **FRENO DE INTENSIDAD (LIGUE):** PROHIBIDO decir "te amo", "eres
     }
   }
 
-  // 7. CONSTRUCCIÓN DEL SYSTEM INSTRUCTION (REGLAS DE ORO)
+  // 7.1 HUELLA DE ESTILO (FINGERPRINT)
+  const styleFingerprint = buildStyleFingerprint(styleSample);
+  const hasUserVoice = Boolean(styleFingerprint || lastUserStyle);
+  const styleFingerprintInstruction = styleFingerprint
+    ? `\n### HUELLA DE ESTILO (FINGERPRINT)\n${styleFingerprint}\nRegla: imita la estructura visual (pausas, emojis, capitalización) sin copiar texto literal.`
+    : "";
+
+  const lexicalInstruction = preferredLexicon?.length > 0
+    ? hasUserVoice
+      ? `Integra el léxico preferido solo cuando fluya con la voz detectada: ${preferredLexicon.join(", ")}.`
+      : isDirect
+        ? `Puedes usar parte de este léxico si encaja con brevedad: ${preferredLexicon.join(", ")}.`
+        : `Puedes usar este léxico cuando suene natural: ${preferredLexicon.join(", ")}.`
+    : "Usa lenguaje natural.";
+
+  const toneInstructionFinal = softenForUserVoice(toneInstruction, hasUserVoice);
+  const styleInstructionsFinal = softenForUserVoice(styleInstructions, hasUserVoice);
+  const celebrationInstructionFinal = softenForUserVoice(
+    celebrationInstruction,
+    hasUserVoice,
+  );
+
+  // 7. CONSTRUCCIÓN DEL SYSTEM INSTRUCTION (JERARQUÍA LIMPIA)
   const systemInstructionText = `
 ### ROLE
-Eres el "Guardián de Sentimiento". Escribes EN NOMBRE DEL USUARIO para su CONTACTO.
+Eres el "Guardián de Sentimiento". Escribes EN NOMBRE DEL USUARIO para su CONTACTO en lenguaje real de chat.
 ${intentionInstruction}
 
-### REGLAS DE ORO (ANTI-ALUCINACIÓN)
-0. **PRESENTE PURO:** Si no hay historial previo, PROHIBIDO asumir pasado (ej: "fuimos", "dijiste"). Tu relación empieza HOY.
-1. **SIN REPORTE CLIMÁTICO:** Prohibido mencionar sol, calor, brisa o nombres de ciudades (ej. Cartagena).
-2. **ADN LÉXICO:** ${preferredLexicon?.length > 0 ? (isDirect ? `Usa estas palabras SOLO si encajan con la brevedad: ${preferredLexicon.join(", ")}.` : `Usa obligatoriamente: ${preferredLexicon.join(", ")}.`) : "Usa lenguaje natural."}
-3. **FILTRO ANTI-ROBOT:** Si suena a poema o folleto de ventas, descártalo. Debe ser un WhatsApp real.
-${avoidTopics ? `4. **TEMAS A EVITAR:** No menciones ${avoidTopics}.` : ""}
-${isDirect ? `5. **CERO POESÍA (CRÍTICO):** Al ser tono DIRECTO, ignora cualquier instrucción de "buscar emoción". Prohibido usar metáforas, frases profundas o cursilerías. Sé práctico.` : ""}
+### PRIORIDAD ESTRICTA
+1. VOZ DEL USUARIO (muestra/fingerprint) domina sobre cualquier otra regla.
+2. CONTEXTO REAL (relación, ocasión, mensaje recibido).
+3. INTENCIÓN CONVERSACIONAL.
+4. TONO BASE.
+5. AJUSTE REGIONAL INVISIBLE (solo sintaxis/registro).
+
+### REGLAS BASE
+0. Si no hay historial previo, no inventes recuerdos.
+1. Evita frases de folleto, poesía genérica o saludos robóticos.
+2. ADN LÉXICO: ${lexicalInstruction}
+${avoidTopics ? `3. TEMAS A EVITAR: no menciones ${avoidTopics}.` : ""}
+${isDirect ? `4. Si el tono es DIRECTO, prioriza frases simples y accionables, sin metáforas.` : ""}
+
+### LÓGICA DE APRENDIZAJE (IMITA SIN COPIAR)
+1. **Voz del usuario:** ${lastUserStyle ? `Imita el ritmo, la longitud aproximada y la puntuación de este ejemplo del usuario: "${lastUserStyle}".` : "No hay ejemplo del usuario. Usa un estilo conversacional natural."}
+2. **Estructura visual:** prioriza pausas, puntuación, emojis y capitalización del usuario.
+3. **Evita copia literal:** no repitas frases completas del ejemplo; replica el patrón, no el texto.
+${styleFingerprintInstruction}
+
+${regionalSyntaxHint ? `### REGIONALIZACIÓN INVISIBLE\n${regionalSyntaxHint}` : ""}
 
 ### JERARQUÍA DE ESTILO (ORDEN DE IMPORTANCIA)
-${celebrationInstruction ? `0. APERTURA OBLIGATORIA: ${celebrationInstruction}` : ""}
-${styleInstructions ? `1. PRIORIDAD TOTAL (GUARDIÁN): ${styleInstructions}` : ""}
-${essenceInstruction ? `2. IDENTIDAD DE USUARIO (ESENCIA): ${essenceInstruction}\n   (NOTA: Si la Esencia contradice al Guardián (Punto 1), obedece al Guardián).` : ""}
-${toneInstruction ? `3. TONO BASE: ${toneInstruction}` : ""}
-${lastUserStyle ? `4. REFERENCIA DE ESTILO: "${lastUserStyle}" (No usar si contradice los puntos anteriores).` : ""}
+${styleInstructionsFinal ? `1. GUIA DE CONTEXTO (GUARDIÁN): ${styleInstructionsFinal}` : ""}
+${essenceInstruction ? `2. IDENTIDAD DE USUARIO (ESENCIA): ${essenceInstruction}` : ""}
+${toneInstructionFinal ? `3. TONO BASE: ${toneInstructionFinal}` : ""}
+${celebrationInstructionFinal ? `4. CELEBRACIÓN (SUAVE): ${celebrationInstructionFinal}` : ""}
 
 ### CONTEXTO DINÁMICO
 - Salud Relacional: ${relationalHealth}/10. ${relationalHealth > 8 ? "Confianza alta/Humor." : "Cuidado/Vulnerabilidad."}
@@ -284,14 +383,21 @@ ${timeInstruction}
 ${occasion === "perdoname" ? `\n### PERDÓN: El usuario pide disculpas. FOCO: "Lo siento", "Me equivoqué". ${apologyReason ? `Motivo: ${apologyReason}` : ""}` : ""}
 `.trim();
 
-  // 7. PROMPT DE USUARIO (DATOS PUROS)
+  // 8. FORMATO DE SALIDA (SEPARADO DE REDACCIÓN)
+  const outputContract = formatInstruction
+    ? `\n### CONTRATO DE FORMATO (NO ALTERA LA VOZ)
+Redacta primero un mensaje humano y natural según las reglas anteriores.
+Después adapta esa salida al formato solicitado a continuación, sin cambiar el estilo de voz:\n${formatInstruction}`
+    : "";
+
+  // 9. PROMPT DE USUARIO (DATOS PUROS)
   const promptText = `
 ### INPUT DATA
 - Relationship: ${relationship} | Occasion: ${occasion}
 - Context: ${contextWords || "N/A"}
 - Received: "${receivedText || "N/A"}"
-- RegionalContext: ${regionalBoost}
-${formatInstruction || ""}
+- RegionalSyntax: ${regionalSyntaxHint || "N/A"}
+${outputContract}
 `.trim();
 
   // 8. CONFIGURACIÓN DE GENERACIÓN (TEMPERATURA DINÁMICA)

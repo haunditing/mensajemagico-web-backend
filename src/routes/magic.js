@@ -47,6 +47,7 @@ router.post("/generate", getUser, async (req, res, next) => {
     greetingMoment,
     apologyReason,
     applyEssence,
+    styleSample,
   } = req.body;
 
   const user = req.user;
@@ -95,6 +96,7 @@ router.post("/generate", getUser, async (req, res, next) => {
         const generationData = {
           ...req.body,
           contextWords, // Usamos la versión saneada
+          styleSample,
           planLevel: user.planLevel,
           relationalHealth: guardianContext.relationalHealth,
           snoozeCount: guardianContext.snoozeCount,
@@ -172,6 +174,7 @@ router.post("/generate-stream", getUser, async (req, res) => {
     greetingMoment,
     apologyReason,
     applyEssence,
+    styleSample,
   } = req.body;
 
   const user = req.user;
@@ -212,6 +215,7 @@ router.post("/generate-stream", getUser, async (req, res) => {
     const generationData = {
       ...req.body,
       contextWords,
+      styleSample,
       planLevel: user.planLevel,
       relationalHealth: guardianContext.relationalHealth,
       snoozeCount: guardianContext.snoozeCount,

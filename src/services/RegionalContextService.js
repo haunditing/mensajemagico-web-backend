@@ -1,7 +1,7 @@
 /**
  * Servicio de Contexto Regional
- * Centraliza la lógica para adaptar los mensajes a la cultura local del usuario.
- * Escalable: Solo agrega objetos a REGIONAL_CONFIG para soportar nuevas zonas.
+ * Modo estricto: solo ajusta pronominalizacion y registro sintactico.
+ * No inyecta personalidad regional ni jerga nueva.
  */
 
 const REGIONAL_CONFIG = [
@@ -19,7 +19,7 @@ const REGIONAL_CONFIG = [
       "cesar",
     ],
     prompt: (location) =>
-      `[MODO REGIONAL ACTIVO]: El usuario está en ${location}. Inyecta la esencia, el carisma y el ritmo local de la Costa Caribe en el mensaje (calidez, alegría, espontaneidad), pero manteniendo la elegancia y sofisticación del plan Premium.`,
+      `[MODO REGIONAL ACTIVO]: Usuario en ${location}. Ajusta solo pronominalizacion y sintaxis del Caribe colombiano, sin agregar jerga nueva ni rasgos estereotipados.`,
   },
   {
     id: "paisa_col",
@@ -35,19 +35,19 @@ const REGIONAL_CONFIG = [
       "quindío",
     ],
     prompt: (location) =>
-      `[MODO REGIONAL ACTIVO]: El usuario está en ${location}. Inyecta la amabilidad paisa/cafetera, la cercanía y el optimismo característico de la región (ej. calidez, trato cercano, uso sutil de 'vos' si aplica), manteniendo la elegancia Premium.`,
+      `[MODO REGIONAL ACTIVO]: Usuario en ${location}. Usa voseo paisa y sintaxis cercana solo si coincide con la muestra del usuario. No agregues verbos de jerga si no aparecen en su estilo.`,
   },
   {
     id: "bogota_col",
     keywords: ["bogotá", "bogota", "cundinamarca"],
     prompt: (location) =>
-      `[MODO REGIONAL ACTIVO]: El usuario está en ${location}. Inyecta la cortesía, la formalidad cálida y el estilo urbano/sofisticado de la capital (cultura rola/cachaca), manteniendo la elegancia Premium.`,
+      `[MODO REGIONAL ACTIVO]: Usuario en ${location}. Ajusta registro urbano neutro y pronominalizacion local sin estereotipos ni jerga inventada.`,
   },
   {
     id: "colombia_general",
     keywords: ["colombia"], // Fallback para otras ciudades de Colombia
     prompt: (location) =>
-      `[MODO REGIONAL ACTIVO]: El usuario está en ${location}. Usa un tono cálido y amable, característico de Colombia, manteniendo la sofisticación Premium.`,
+      `[MODO REGIONAL ACTIVO]: Usuario en ${location}. Mantén sintaxis colombiana neutra con pronominalizacion consistente y sin muletillas nuevas.`,
   },
 
   // --- ARGENTINA ---
@@ -63,7 +63,7 @@ const REGIONAL_CONFIG = [
       "la plata",
     ],
     prompt: (location) =>
-      `[MODO REGIONAL ACTIVO]: El usuario está en ${location}. Usa el 'voseo' (vos) y un tono argentino cálido, expresivo y con carácter. Evita el 'tú'. Mantén la elegancia y sofisticación Premium.`,
+      `[MODO REGIONAL ACTIVO]: Usuario en ${location}. Prioriza voseo rioplatense en pronombres y conjugacion, sin introducir jerga que no exista en la muestra del usuario.`,
   },
 
   // --- MÉXICO ---
@@ -71,7 +71,7 @@ const REGIONAL_CONFIG = [
     id: "mexico_cdmx",
     keywords: ["ciudad de méxico", "cdmx", "df"],
     prompt: (location) =>
-      `[MODO REGIONAL ACTIVO]: El usuario está en ${location}. Inyecta el estilo chilango educado y cálido, con la cortesía característica de la capital, manteniendo un tono sofisticado y Premium.`,
+      `[MODO REGIONAL ACTIVO]: Usuario en ${location}. Ajusta tuteo y registro de CDMX de forma neutra, sin frases estereotipadas.`,
   },
   {
     id: "mexico_general",
@@ -84,7 +84,7 @@ const REGIONAL_CONFIG = [
       "cancún",
     ],
     prompt: (location) =>
-      `[MODO REGIONAL ACTIVO]: El usuario está en ${location}. Inyecta la calidez, cortesía y hospitalidad mexicana (ej. amabilidad, 'tú' cercano), manteniendo un tono sofisticado y Premium.`,
+      `[MODO REGIONAL ACTIVO]: Usuario en ${location}. Mantén tuteo mexicano neutro y sintaxis natural, sin jerga nueva no presente en el estilo usuario.`,
   },
 
   // --- CHILE ---
@@ -92,7 +92,7 @@ const REGIONAL_CONFIG = [
     id: "chile_general",
     keywords: ["chile", "santiago", "valparaíso", "concepción"],
     prompt: (location) =>
-      `[MODO REGIONAL ACTIVO]: El usuario está en ${location}. Usa un tono cercano y cálido propio de Chile, evitando modismos excesivamente informales (slang), pero manteniendo la identidad local y la elegancia Premium.`,
+      `[MODO REGIONAL ACTIVO]: Usuario en ${location}. Ajusta registro chileno neutro y pronominalizacion local, sin modismos agregados.`,
   },
 
   // --- PERÚ ---
@@ -100,11 +100,11 @@ const REGIONAL_CONFIG = [
     id: "peru_general",
     keywords: ["perú", "peru", "lima", "cusco", "arequipa"],
     prompt: (location) =>
-      `[MODO REGIONAL ACTIVO]: El usuario está en ${location}. Usa un tono amable, respetuoso, suave y lírico, característico de Perú. Mantén la sofisticación Premium.`,
+      `[MODO REGIONAL ACTIVO]: Usuario en ${location}. Mantén sintaxis peruana neutra y cortesia local, evitando jerga no presente en la muestra del usuario.`,
   },
 ];
 
-const getRegionalBoost = (userLocation, planLevel, neutralMode) => {
+const getRegionalBoost = (userLocation, planLevel, neutralMode, styleSample = "") => {
   // Solo aplicamos lógica regional para usuarios Premium
   if (planLevel !== "premium" || !userLocation) return "";
 
@@ -117,7 +117,14 @@ const getRegionalBoost = (userLocation, planLevel, neutralMode) => {
     r.keywords.some((keyword) => locNormalized.includes(keyword)),
   );
 
-  return region ? region.prompt(userLocation) : "";
+  if (!region) return "";
+
+  const hasStyle = typeof styleSample === "string" && styleSample.trim().length > 0;
+  const slangGuard = hasStyle
+    ? " Regla estricta: no agregues jerga o verbos regionales que no aparezcan literal en la muestra del usuario."
+    : " Regla estricta: mantente en pronominalizacion y sintaxis neutra; evita jerga regional.";
+
+  return `${region.prompt(userLocation)}${slangGuard}`;
 };
 
 module.exports = {
