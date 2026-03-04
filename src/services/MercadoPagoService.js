@@ -80,6 +80,11 @@ const cancelPreApproval = async (id) => {
   return await preApproval.update({ id, body: { status: "cancelled" } });
 };
 
+const reactivatePreApproval = async (id) => {
+  const preApproval = new PreApproval(client);
+  return await preApproval.update({ id, body: { status: "authorized" } });
+};
+
 const createSubscription = async ({
   title,
   price,
@@ -142,6 +147,7 @@ module.exports = {
   getPreApproval,
   searchPayment,
   cancelPreApproval,
+  reactivatePreApproval,
   createSubscription,
   updateSubscription,
 };

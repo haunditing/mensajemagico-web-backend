@@ -8,9 +8,12 @@ const PLAN_CONFIG = require("../config/plans");
 const checkExpiredWompiSubscriptions = async () => {
   logger.info("Ejecutando verificación de suscripciones Wompi expiradas...");
   try {
-    // 1. Buscar usuarios Premium con suscripción Wompi
+    // 1. Buscar usuarios Premium o Premium Lite con suscripción Wompi
     const users = await User.find({
-      planLevel: "premium",
+      $or: [
+        { planLevel: "premium" },
+        { planLevel: "premium_lite" }
+      ],
       subscriptionId: { $regex: /^wompi_/ }
     });
 
@@ -18,21 +21,14 @@ const checkExpiredWompiSubscriptions = async () => {
     let downgradedCount = 0;
 
     for (const user of users) {
-      // Si no tiene fecha de pago, ignoramos (o podrías usar createdAt como fallback)
+      // Si no tiene fecha de pago, ignoramos
       if (!user.lastPaymentDate) continue;
 
-      const expirationDate = new Date(user.lastPaymentDate);
-
-      // Calcular fecha de vencimiento según el intervalo
-      if (user.planInterval === "year") {
-        expirationDate.setFullYear(expirationDate.getFullYear() + 1);
-      } else {
-        // Por defecto mensual (30 días)
-        expirationDate.setDate(expirationDate.getDate() + 30);
-      }
-
-      // Verificar si ya expiró
-      if (now > expirationDate) {
+      const daysUntilExpiration = user.getDaysUntilExpiration();
+      
+      // Si ya expiró (días negativos o 0)
+      if (daysUntilExpiration !== null && daysUntilExpiration <= 0) {
+        const expirationDate = user.getExpirationDate();
         logger.info(`Suscripción Wompi expirada para usuario ${user._id}. Vencía: ${expirationDate.toISOString()}`);
         
         user.planLevel = "freemium";
@@ -55,7 +51,10 @@ const checkUpcomingWompiExpirations = async () => {
   logger.info("Verificando vencimientos próximos de Wompi...");
   try {
     const users = await User.find({
-      planLevel: "premium",
+      $or: [
+        { planLevel: "premium" },
+        { planLevel: "premium_lite" }
+      ],
       subscriptionId: { $regex: /^wompi_/ }
     });
 
@@ -66,27 +65,19 @@ const checkUpcomingWompiExpirations = async () => {
     for (const user of users) {
       if (!user.lastPaymentDate) continue;
 
-      const expirationDate = new Date(user.lastPaymentDate);
-      if (user.planInterval === "year") {
-        expirationDate.setFullYear(expirationDate.getFullYear() + 1);
-      } else {
-        expirationDate.setDate(expirationDate.getDate() + 30);
-      }
+      const daysUntilExpiration = user.getDaysUntilExpiration();
+      if (daysUntilExpiration === null) continue;
 
-      // Normalizar fecha de expiración a medianoche
-      const expDateOnly = new Date(expirationDate.getFullYear(), expirationDate.getMonth(), expirationDate.getDate());
+      const expirationDate = user.getExpirationDate();
 
-      // Calcular diferencia en días
-      const diffTime = expDateOnly - today;
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-      // Si faltan exactamente 3 días
-      if (diffDays === 3) {
-        logger.info(`Enviando recordatorio de vencimiento a usuario ${user._id}`);
+      // Enviar recordatorios en días específicos: 7, 3 y 1
+      if ([7, 3, 1].includes(daysUntilExpiration)) {
+        logger.info(`Enviando recordatorio de vencimiento (${daysUntilExpiration} días) a usuario ${user._id}`);
         await EmailService.sendSubscriptionExpirationWarning(
           user.email, 
-          3, 
-          expirationDate.toLocaleDateString()
+          daysUntilExpiration, 
+          expirationDate.toLocaleDateString(),
+          user.planLevel
         );
       }
     }
@@ -133,12 +124,96 @@ const checkPromoExpirations = async () => {
         await new Promise(r => setTimeout(r, 500));
       }
       
-      // Para TODOS (Wompi, MP, Stripe), limpiamos la fecha de promo vencida
+      // Para TODOS (Wompi, MP), limpiamos la fecha de promo vencida
       user.promoEndsAt = undefined;
       await user.save();
     }
   } catch (error) {
     logger.error("Error en cron job de promos", { error: error.message });
+  }
+};
+
+// === CRON JOBS PARA FREE TRIAL ===
+
+const checkExpiredTrials = async () => {
+  logger.info("Verificando trials expirados...");
+  try {
+    const now = new Date();
+    
+    // Buscar usuarios con trial activo que ya expiró
+    const expiredTrialUsers = await User.find({
+      trialEndDate: { $lt: now },
+      planLevel: "premium_lite",
+      // Verificar que no tengan suscripción activa (trial gratuito)
+      $or: [
+        { subscriptionId: { $exists: false } },
+        { subscriptionId: null },
+        { subscriptionId: "" }
+      ]
+    });
+
+    let downgradedCount = 0;
+
+    for (const user of expiredTrialUsers) {
+      // Verificar que realmente estaba en trial y no es un usuario de pago
+      if (user.hasUsedTrial && user.trialStartDate && user.trialEndDate) {
+        logger.info(`Trial expirado para usuario ${user._id} (${user.email}). Degradando a freemium.`);
+        
+        user.planLevel = "freemium";
+        await user.save();
+        downgradedCount++;
+      }
+    }
+
+    if (downgradedCount > 0) {
+      logger.info(`${downgradedCount} usuarios degradados de trial a freemium.`);
+    } else {
+      logger.info("No hay trials expirados hoy.");
+    }
+  } catch (error) {
+    logger.error("Error verificando trials expirados", { error: error.message });
+  }
+};
+
+const checkUpcomingTrialExpirations = async () => {
+  logger.info("Verificando trials próximos a expirar...");
+  try {
+    const now = new Date();
+    
+    // Buscar usuarios con trial activo
+    const usersInTrial = await User.find({
+      trialStartDate: { $exists: true, $ne: null },
+      trialEndDate: { $gte: now }, // Aún no expiró
+      planLevel: "premium_lite",
+      // Sin suscripción de pago (trial gratuito)
+      $or: [
+        { subscriptionId: { $exists: false } },
+        { subscriptionId: null },
+        { subscriptionId: "" }
+      ]
+    });
+
+    for (const user of usersInTrial) {
+      const daysRemaining = user.getTrialDaysRemaining();
+      
+      // Enviar recordatorio 2 días antes de expirar
+      if (daysRemaining === 2) {
+        logger.info(`Enviando recordatorio de trial a ${user.email} (${daysRemaining} días restantes)`);
+        
+        try {
+          await EmailService.sendTrialExpiringEmail(
+            user.email,
+            user.name || user.email.split('@')[0],
+            daysRemaining,
+            user.trialEndDate
+          );
+        } catch (emailError) {
+          logger.error(`Error enviando email de recordatorio de trial a ${user.email}`, { error: emailError.message });
+        }
+      }
+    }
+  } catch (error) {
+    logger.error("Error verificando trials próximos a expirar", { error: error.message });
   }
 };
 
@@ -149,6 +224,8 @@ const initScheduledJobs = () => {
     await checkExpiredWompiSubscriptions();
     await checkUpcomingWompiExpirations();
     await checkPromoExpirations();
+    await checkExpiredTrials();
+    await checkUpcomingTrialExpirations();
   });
   
   logger.info("Motor de tareas programadas (Cron) inicializado.");

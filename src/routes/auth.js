@@ -80,13 +80,16 @@ router.post("/signup", authLimiter, async (req, res) => {
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
-    // Crear usuario (Plan por defecto: freemium)
+    // Crear usuario (Plan por defecto: freemium, pero activamos trial de 7 días)
     const newUser = new User({
       name,
       email,
-      password: hashedPassword, // Asegúrate de que esta línea esté presente
-      planLevel: "freemium",
+      password: hashedPassword,
+      planLevel: "freemium", // Se actualiza a premium_lite al activar trial
     });
+
+    // Activar trial de 7 días automáticamente para nuevos usuarios
+    const trialActivated = newUser.activateTrial();
 
     await newUser.save();
 
@@ -98,7 +101,21 @@ router.post("/signup", authLimiter, async (req, res) => {
       expiresIn: "7d",
     });
 
-    logger.info(`Nuevo usuario registrado: ${email}`);
+    logger.info(`Nuevo usuario registrado: ${email}${trialActivated ? ' (Trial activado)' : ''}`);
+
+    // Enviar email de bienvenida con info del trial
+    if (trialActivated) {
+      try {
+        await EmailService.sendTrialWelcomeEmail(
+          newUser.email,
+          newUser.name || newUser.email.split('@')[0],
+          newUser.trialEndDate
+        );
+      } catch (emailError) {
+        logger.error('Error enviando email de bienvenida de trial', { error: emailError.message });
+        // No fallar el registro si falla el email
+      }
+    }
 
     res.status(201).json({
       message: "Usuario creado exitosamente",
@@ -106,6 +123,11 @@ router.post("/signup", authLimiter, async (req, res) => {
       userId: newUser._id,
       planLevel: newUser.planLevel,
       name: newUser.name,
+      trial: trialActivated ? {
+        active: true,
+        daysRemaining: 7,
+        endDate: newUser.trialEndDate
+      } : null
     });
   } catch (error) {
     logger.error("Error en signup", {
@@ -174,17 +196,27 @@ router.get("/me", authenticate, async (req, res) => {
     user.checkDailyReset();
     await user.save();
 
-    // Calcular créditos restantes
-    const planMetadata = PlanService.getPlanMetadata(user.planLevel);
+    // Calcular créditos restantes (usar plan efectivo si está en trial)
+    const effectivePlan = user.getEffectivePlan();
+    const planMetadata = PlanService.getPlanMetadata(effectivePlan);
     const remainingCredits = Math.max(
       0,
       planMetadata.access.daily_limit - user.usage.generationsCount,
     );
 
+    // Información del trial
+    const trialInfo = user.isInTrial() ? {
+      active: true,
+      daysRemaining: user.getTrialDaysRemaining(),
+      endDate: user.trialEndDate
+    } : null;
+
     res.json({
       user,
       remainingCredits,
       plan: planMetadata,
+      trial: trialInfo,
+      effectivePlan: effectivePlan // Plan real considerando trial
     });
   } catch (error) {
     logger.error("Error en /me", {

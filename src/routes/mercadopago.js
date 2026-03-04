@@ -59,15 +59,27 @@ router.post("/create_preference", async (req, res) => {
     const user = await User.findById(userId);
     if (!user) return res.status(404).json({ error: "Usuario no encontrado" });
 
-    const premiumConfig = PLAN_CONFIG.subscription_plans.premium;
+    // Extraer plan y intervalo del planId (ej: "premium_monthly" o "premium_lite_yearly")
+    let planType = "premium";
+    let interval = "monthly";
+    
+    if (planId.includes("premium_lite")) {
+      planType = "premium_lite";
+      interval = planId.includes("yearly") ? "yearly" : "monthly";
+    } else if (planId.includes("premium")) {
+      planType = "premium";
+      interval = planId.includes("yearly") ? "yearly" : "monthly";
+    }
+
+    const planConfig = PLAN_CONFIG.subscription_plans[planType];
     let price, title;
-    const currency_id = "COP"; // Forzamos COP para evitar el error de MP,
+    const currency_id = "COP"; // Forzamos COP para evitar el error de MP
     const TRM = await getTRM(); // Obtiene la TRM dinámica con fallback
     let frequency = 1;
 
     // Lógica de expiración de oferta (Backend)
-    const offerEndDate = premiumConfig.pricing_hooks.offer_end_date;
-    const offerDuration = premiumConfig.pricing_hooks.offer_duration_months || 0;
+    const offerEndDate = planConfig.pricing_hooks.offer_end_date;
+    const offerDuration = planConfig.pricing_hooks.offer_duration_months || 0;
     let isOfferActive = true;
     let durationToApply = 0;
 
@@ -97,42 +109,42 @@ router.post("/create_preference", async (req, res) => {
 
     if (country === "CO") {
       // --- CONCEPTO A: USUARIO LOCAL ---
-      if (planId === "premium_yearly") {
-        if (!isOfferActive && premiumConfig.pricing_hooks.mercadopago_price_yearly_original) {
-          price = premiumConfig.pricing_hooks.mercadopago_price_yearly_original;
+      if (planId === `${planType}_yearly` || interval === "yearly") {
+        if (!isOfferActive && planConfig.pricing_hooks.mercadopago_price_yearly_original) {
+          price = planConfig.pricing_hooks.mercadopago_price_yearly_original;
           logger.info(`[MercadoPago] Restaurando precio original anual: ${price}`);
         } else {
-          price = premiumConfig.pricing_hooks.mercadopago_price_yearly;
+          price = planConfig.pricing_hooks.mercadopago_price_yearly;
         }
-        title = "Suscripción Anual - MensajeMágico Premium";
+        title = `Suscripción Anual - MensajeMágico ${planConfig.name}`;
         frequency = 12;
       } else {
-        if (!isOfferActive && premiumConfig.pricing_hooks.mercadopago_price_monthly_original) {
-          price = premiumConfig.pricing_hooks.mercadopago_price_monthly_original;
+        if (!isOfferActive && planConfig.pricing_hooks.mercadopago_price_monthly_original) {
+          price = planConfig.pricing_hooks.mercadopago_price_monthly_original;
           logger.info(`[MercadoPago] Restaurando precio original mensual: ${price}`);
         } else {
-          price = premiumConfig.pricing_hooks.mercadopago_price_monthly;
+          price = planConfig.pricing_hooks.mercadopago_price_monthly;
         }
-        title = "Suscripción Mensual - MensajeMágico Premium";
+        title = `Suscripción Mensual - MensajeMágico ${planConfig.name}`;
       }
     } else {
       // --- CONCEPTO B: USUARIO INTERNACIONAL (Disfraz de USD a COP) ---
       // Convertimos el precio de USD a COP para que Mercado Pago lo procese
       let priceInUsd;
 
-      if (planId === "premium_yearly") {
-        if (!isOfferActive && premiumConfig.pricing_hooks.mercadopago_price_yearly_usd_original) {
-          priceInUsd = premiumConfig.pricing_hooks.mercadopago_price_yearly_usd_original;
+      if (planId === `${planType}_yearly` || interval === "yearly") {
+        if (!isOfferActive && planConfig.pricing_hooks.mercadopago_price_yearly_usd_original) {
+          priceInUsd = planConfig.pricing_hooks.mercadopago_price_yearly_usd_original;
           logger.info(`[MercadoPago] Restaurando precio original anual USD: ${priceInUsd}`);
         } else {
-          priceInUsd = premiumConfig.pricing_hooks.mercadopago_price_yearly_usd;
+          priceInUsd = planConfig.pricing_hooks.mercadopago_price_yearly_usd;
         }
       } else {
-        if (!isOfferActive && premiumConfig.pricing_hooks.mercadopago_price_monthly_usd_original) {
-          priceInUsd = premiumConfig.pricing_hooks.mercadopago_price_monthly_usd_original;
+        if (!isOfferActive && planConfig.pricing_hooks.mercadopago_price_monthly_usd_original) {
+          priceInUsd = planConfig.pricing_hooks.mercadopago_price_monthly_usd_original;
           logger.info(`[MercadoPago] Restaurando precio original mensual USD: ${priceInUsd}`);
         } else {
-          priceInUsd = premiumConfig.pricing_hooks.mercadopago_price_monthly_usd;
+          priceInUsd = planConfig.pricing_hooks.mercadopago_price_monthly_usd;
         }
       }
 
@@ -140,9 +152,9 @@ router.post("/create_preference", async (req, res) => {
       price = Math.round(priceInUsd * TRM);
 
       // La leyenda estratégica:
-      title = `Plan Premium Internacional (Equivalente a $${priceInUsd} USD)`;
+      title = `Plan ${planConfig.name} Internacional (Equivalente a $${priceInUsd} USD)`;
 
-      if (planId === "premium_yearly") {
+      if (planId === `${planType}_yearly` || interval === "yearly") {
         frequency = 12;
       }
     }
@@ -152,12 +164,17 @@ router.post("/create_preference", async (req, res) => {
     // Formato: userId|durationMonths
     const externalReference = durationToApply > 0 ? `${userId}|${durationToApply}` : userId.toString();
 
+    // Guardar temporalmente el plan que se está comprando para el webhook
+    user._pendingPlan = planType;
+    await user.save();
+
     // Log de depuración para verificar los datos antes de enviar a MP
     logger.info("Iniciando creación de preferencia MP", {
       userId,
       price,
       title,
       frequency,
+      planType,
       idempotencyKey,
     });
 
@@ -221,10 +238,15 @@ router.post("/webhook", async (req, res) => {
       const [userId, durationStr] = rawRef.split('|');
       const duration = durationStr ? parseInt(durationStr) : 0;
 
+      // Recuperar el plan pendiente del usuario
+      const userForPlan = await User.findById(userId);
+      const planType = userForPlan?._pendingPlan || "premium";
+
       const updateData = {
-        planLevel: "premium",
+        planLevel: planType,
         subscriptionId: `mp_sub_${subscription.id}`,
         subscriptionStatus: "active",
+        _pendingPlan: null, // Limpiar el campo temporal
       };
 
       // Si hay duración de promo, calculamos fecha fin
@@ -243,14 +265,15 @@ router.post("/webhook", async (req, res) => {
       }
 
       if (subscription.status === "authorized") {
-        // ACTIVAR PREMIUM
+        // ACTIVAR PLAN (premium o premium_lite)
         await User.findByIdAndUpdate(userId, updateData);
-        logger.info(`Suscripción autorizada: ${userId}`);
+        logger.info(`Suscripción autorizada: ${userId} al plan ${planType}`);
       } else if (subscription.status === "cancelled") {
         // DEGRADAR A FREE
         await User.findByIdAndUpdate(userId, {
-          planLevel: "free",
+          planLevel: "freemium",
           subscriptionStatus: "cancelled",
+          _pendingPlan: null,
         });
         logger.warn(`Suscripción cancelada: ${userId}`);
       }
@@ -269,10 +292,15 @@ router.post("/webhook", async (req, res) => {
       const duration = parts[1] ? parseInt(parts[1]) : 0;
 
       if (payment.status === "approved" && userId) {
+        // Recuperar el plan pendiente del usuario
+        const userForPlan = await User.findById(userId);
+        const planType = userForPlan?._pendingPlan || "premium";
+
         const updateData = {
-          planLevel: "premium",
+          planLevel: planType,
           subscriptionId: `mp_pay_${payment.id}`,
           lastPaymentDate: new Date(),
+          _pendingPlan: null, // Limpiar el campo temporal
         };
 
         if (duration > 0) {
@@ -287,7 +315,7 @@ router.post("/webhook", async (req, res) => {
         }
 
         await User.findByIdAndUpdate(userId, updateData);
-        logger.info(`Pago único aprobado: ${userId}`);
+        logger.info(`Pago único aprobado: ${userId} al plan ${planType}`);
       } else if (
         payment.status === "pending" ||
         payment.status === "in_process"

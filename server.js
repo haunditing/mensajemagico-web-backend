@@ -45,17 +45,22 @@ const allowedOrigins = [
   ...clientUrls,
   "https://www.mensajemagico.com",
   "https://mensajemagico.com",
-  "http://localhost:5173", // Vite default
-  "http://localhost:4173", // Vite default 2
-  "http://localhost:4174", // Vite default 3
-  "http://localhost:3000", // Next.js / CRA default
-  "http://192.168.1.10:5173", // Tu IP local para pruebas en red
 ].filter(Boolean);
+
+// Regex para permitir cualquier localhost en desarrollo
+const localhostRegex = /^http:\/\/localhost:\d+$/;
+const localIPRegex = /^http:\/\/192\.168\.\d+\.\d+:\d+$/;
 
 // Deduplicar orígenes para evitar logs repetidos
 const uniqueAllowedOrigins = [...new Set(allowedOrigins)];
 
-logger.info(`CORS habilitado para: ${uniqueAllowedOrigins.join(", ")}`);
+const isDevelopment = process.env.NODE_ENV !== "production";
+
+if (isDevelopment) {
+  logger.info(`CORS habilitado para: ${uniqueAllowedOrigins.join(", ")} + cualquier localhost/IP local`);
+} else {
+  logger.info(`CORS habilitado para: ${uniqueAllowedOrigins.join(", ")}`);
+}
 
 app.use(
   cors({
@@ -63,30 +68,29 @@ app.use(
       // Permitir solicitudes sin origen (como apps móviles, curl o Postman)
       if (!origin) return callback(null, true);
 
-      if (uniqueAllowedOrigins.indexOf(origin) === -1) {
-        logger.warn(`CORS bloqueado para origen: ${origin}`);
-        return callback(
-          new Error("La política CORS no permite este origen"),
-          false,
-        );
+      // En desarrollo, permitir cualquier localhost o IP local
+      if (isDevelopment && (localhostRegex.test(origin) || localIPRegex.test(origin))) {
+        return callback(null, true);
       }
-      return callback(null, true);
+
+      // Verificar orígenes permitidos explícitamente
+      if (uniqueAllowedOrigins.indexOf(origin) !== -1) {
+        return callback(null, true);
+      }
+
+      logger.warn(`CORS bloqueado para origen: ${origin}`);
+      return callback(
+        new Error("La política CORS no permite este origen"),
+        false,
+      );
     },
     credentials: true,
     optionsSuccessStatus: 200, // Mejora compatibilidad con algunos navegadores/proxies
   }),
 );
 
-// IMPORTANTE: El webhook de Stripe necesita el body raw, el resto JSON.
-// Usamos esta lógica para asegurar que express.json no toque la ruta del webhook.
-app.use((req, res, next) => {
-  if (req.originalUrl === "/api/payments/webhook") {
-    next();
-  } else {
-    express.json()(req, res, next);
-  }
-});
-app.use("/api/payments/webhook", express.raw({ type: "application/json" }));
+// Middleware general para JSON
+app.use(express.json());
 
 // Logger de peticiones básico
 app.use((req, res, next) => {

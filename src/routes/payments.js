@@ -1,122 +1,9 @@
 const express = require("express");
 const router = express.Router();
-const Stripe = require("stripe");
 const User = require("../models/User");
 const MercadoPagoService = require("../services/MercadoPagoService");
 const PLAN_CONFIG = require("../config/plans");
 const logger = require("../utils/logger");
-
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
-
-// 1. Crear sesión de Checkout
-router.post("/create-checkout-session", async (req, res) => {
-  const { userId, interval } = req.body; // interval: 'monthly' o 'yearly'
-  const clientUrl = process.env.CLIENT_URL || req.headers.origin || "http://www.mensajemagico.com";
-
-  try {
-    const user = await User.findById(userId);
-    if (!user) return res.status(404).json({ error: "Usuario no encontrado" });
-
-    const premiumConfig = PLAN_CONFIG.subscription_plans.premium;
-
-    // Seleccionar el Price ID correcto basado en tu config
-    const priceId =
-      interval === "yearly"
-        ? premiumConfig.pricing_hooks.stripe_price_id_yearly
-        : premiumConfig.pricing_hooks.stripe_price_id_monthly;
-
-    let customerId = user.stripeCustomerId;
-
-    // Si el usuario no tiene ID de Stripe, crearlo
-    if (!customerId) {
-      const customer = await stripe.customers.create({ email: user.email });
-      customerId = customer.id;
-      user.stripeCustomerId = customerId;
-      await user.save();
-    }
-
-    const session = await stripe.checkout.sessions.create({
-      mode: "subscription",
-      payment_method_types: ["card"],
-      customer: customerId,
-      line_items: [{ price: priceId, quantity: 1 }],
-      success_url: `${clientUrl}/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${clientUrl}/pricing`,
-      metadata: { userId: user._id.toString() },
-    });
-
-    res.json({ url: session.url });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// 2. Webhook de Stripe (CRÍTICO para actualizar la DB)
-// Nota: Este endpoint debe usar express.raw() en el server.js
-router.post("/webhook", async (req, res) => {
-  const sig = req.headers["stripe-signature"];
-  let event;
-
-  try {
-    event = stripe.webhooks.constructEvent(
-      req.body,
-      sig,
-      process.env.STRIPE_WEBHOOK_SECRET,
-    );
-  } catch (err) {
-    logger.error(`Error de firma en Webhook: ${err.message}`);
-    return res.status(400).send(`Webhook Error: ${err.message}`);
-  }
-
-  logger.info(`Evento de Webhook recibido: ${event.type}`);
-
-  try {
-    // Manejar eventos
-    if (event.type === "checkout.session.completed") {
-      const session = event.data.object;
-      const userId = session.metadata ? session.metadata.userId : null;
-
-      if (userId) {
-        logger.info(`Procesando actualización a Premium para usuario: ${userId}`);
-        // Actualizar usuario a Premium
-        const updatedUser = await User.findByIdAndUpdate(userId, {
-          planLevel: "premium",
-          subscriptionId: session.subscription,
-        }, { new: true });
-
-        if (updatedUser) logger.info(`Usuario ${userId} actualizado a Premium exitosamente`);
-        else logger.error(`No se encontró el usuario ${userId} en la base de datos`);
-      } else {
-        logger.warn(`Sesión completada sin userId en metadata: ${session.id}`);
-      }
-    } else if (event.type === "customer.subscription.deleted") {
-      const subscription = event.data.object;
-      // Buscar usuario por subscriptionId y bajarlo a Freemium
-      await User.findOneAndUpdate(
-        { subscriptionId: subscription.id },
-        {
-          planLevel: "freemium",
-          subscriptionId: null,
-        },
-      );
-      logger.info(`Suscripción ${subscription.id} finalizada. Usuario degradado.`, { subscriptionId: subscription.id });
-    } else if (event.type === "invoice.payment_succeeded") {
-      const invoice = event.data.object;
-      // Asegurar que, en cada renovación exitosa, el usuario mantenga su estatus Premium
-      if (invoice.subscription) {
-        await User.findOneAndUpdate(
-          { subscriptionId: invoice.subscription },
-          { planLevel: "premium" }
-        );
-        logger.info(`Renovación exitosa para suscripción ${invoice.subscription}`, { subscriptionId: invoice.subscription });
-      }
-    }
-  } catch (error) {
-    logger.error("Error en procesamiento de Webhook", { error });
-  }
-
-  res.json({ received: true });
-});
 
 // 3. Endpoint para consultar estado de suscripción
 router.get("/subscription-status", async (req, res) => {
@@ -131,7 +18,7 @@ router.get("/subscription-status", async (req, res) => {
     let subscriptionInfo = null;
 
     if (user.subscriptionId) {
-      // Detectar si es MercadoPago (prefijo mp_) o Stripe
+      // Detectar si es MercadoPago, Wompi u otro
       if (user.subscriptionId.startsWith("mp_sub_")) {
         // Lógica para Suscripciones Recurrentes (PreApproval)
         const preApprovalId = user.subscriptionId.replace("mp_sub_", "");
@@ -206,19 +93,51 @@ router.get("/subscription-status", async (req, res) => {
           interval: user.planInterval === "year" ? "yearly" : "monthly"
         }
       } else {
-        // Lógica original de Stripe
-        const sub = await stripe.subscriptions.retrieve(user.subscriptionId);
-        subscriptionInfo = {
-          renewalDate: new Date(sub.current_period_end * 1000),
-          cancelAtPeriodEnd: sub.cancel_at_period_end,
-          status: sub.status,
-          provider: "stripe"
-        };
+        // Stripe ha sido eliminado - subscriptionId no reconocido
+        subscriptionInfo = null;
       }
     }
 
     res.json({ planLevel: user.planLevel, subscription: subscriptionInfo });
   } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 3.5 Endpoint para verificar estado de renovación (específico para Wompi)
+router.get("/renewal-status", async (req, res) => {
+  const { userId } = req.query;
+
+  try {
+    if (!userId) return res.status(400).json({ error: "userId requerido" });
+
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ error: "Usuario no encontrado" });
+
+    // Solo aplica para Wompi (pago único)
+    if (!user.subscriptionId || !user.subscriptionId.startsWith("wompi_")) {
+      return res.json({ 
+        needsRenewal: false,
+        daysUntilExpiration: null,
+        expirationDate: null,
+        provider: user.subscriptionId ? user.subscriptionId.split("_")[0] : null
+      });
+    }
+
+    const expirationDate = user.getExpirationDate();
+    const daysUntilExpiration = user.getDaysUntilExpiration();
+    const needsRenewal = user.needsRenewal();
+
+    res.json({
+      needsRenewal,
+      daysUntilExpiration,
+      expirationDate,
+      provider: "wompi",
+      planLevel: user.planLevel,
+      planInterval: user.planInterval
+    });
+  } catch (error) {
+    logger.error("Error en renewal-status", { error: error.message });
     res.status(500).json({ error: error.message });
   }
 });
@@ -290,20 +209,13 @@ router.post("/cancel-subscription", async (req, res) => {
       });
     }
 
-    const subscription = await stripe.subscriptions.update(user.subscriptionId, {
-      cancel_at_period_end: true,
-    });
-
-    res.json({
-      message: "La suscripción se cancelará al final del periodo actual",
-      cancelAt: new Date(subscription.current_period_end * 1000),
-    });
+    // Stripe ha sido eliminado. Esta lógica ya está manejada en los bloques de MercadoPago y Wompi.
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
-// 5. Endpoint para reactivar suscripción (arrepentimiento)
+// 5. Endpoint para reactivar suscripción de MercadoPago
 router.post("/reactivate-subscription", async (req, res) => {
   const { userId } = req.body;
 
@@ -317,15 +229,41 @@ router.post("/reactivate-subscription", async (req, res) => {
       return res.status(400).json({ error: "No se encontró una suscripción activa" });
     }
 
-    const subscription = await stripe.subscriptions.update(user.subscriptionId, {
-      cancel_at_period_end: false,
-    });
+    // Lógica para MercadoPago PreApproval
+    if (user.subscriptionId.startsWith("mp_sub_")) {
+      const id = user.subscriptionId.replace("mp_sub_", "");
+      try {
+        await MercadoPagoService.reactivatePreApproval(id);
+        
+        // Actualizar estado del usuario en la BD
+        const updatedUser = await User.findByIdAndUpdate(
+          userId,
+          { planLevel: user.planLevel, subscriptionStatus: "active" },
+          { new: true }
+        );
 
-    res.json({
-      message: "Suscripción reactivada. Se renovará automáticamente.",
-      renewalDate: new Date(subscription.current_period_end * 1000),
-    });
+        logger.info(`Suscripción MP ${id} reactivada para usuario ${userId}`);
+        
+        return res.json({
+          message: "¡Suscripción reactivada exitosamente! Volverás a recibir tus renovaciones automáticas.",
+          planLevel: updatedUser.planLevel,
+        });
+      } catch (error) {
+        logger.error("Error reactivando PreApproval", { error: error.message });
+        return res.status(500).json({ error: "Error al reactivar la suscripción: " + error.message });
+      }
+    }
+
+    // Para Wompi, no hay reactivación automática (es pago único)
+    if (user.subscriptionId.startsWith("wompi_")) {
+      return res.status(400).json({ 
+        error: "Tu suscripción Wompi no tiene renovación automática. Puedes hacer una nueva compra en Pricing." 
+      });
+    }
+
+    return res.status(400).json({ error: "Tipo de suscripción no reconocido" });
   } catch (error) {
+    logger.error("Error en reactivate-subscription", { error: error.message });
     res.status(500).json({ error: error.message });
   }
 });
