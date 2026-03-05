@@ -140,8 +140,8 @@ const PLAN_CONFIG = {
         yearly_monthly_equivalent: 3.99,
       },
       pricing_hooks: {
-        wompi_price_in_cents_monthly: process.env.WOMPI_PRICE_IN_CENTS_MONTHLY ? Number(process.env.WOMPI_PRICE_IN_CENTS_MONTHLY) : undefined,
-        wompi_price_in_cents_yearly: process.env.WOMPI_PRICE_IN_CENTS_YEARLY ? Number(process.env.WOMPI_PRICE_IN_CENTS_YEARLY) : undefined,
+        wompi_price_in_cents_monthly: process.env.WOMPI_PRICE_IN_CENTS_MONTHLY ? Number(process.env.WOMPI_PRICE_IN_CENTS_MONTHLY) : 15960,
+        wompi_price_in_cents_yearly: process.env.WOMPI_PRICE_IN_CENTS_YEARLY ? Number(process.env.WOMPI_PRICE_IN_CENTS_YEARLY) : 159600,
         mercadopago_price_monthly: process.env.MERCADOPAGO_PRICE_MONTHLY ? Number(process.env.MERCADOPAGO_PRICE_MONTHLY) : 15960,
         mercadopago_price_yearly: process.env.MERCADOPAGO_PRICE_YEARLY ? Number(process.env.MERCADOPAGO_PRICE_YEARLY) : 159600,
         mercadopago_price_monthly_original: process.env.MERCADOPAGO_PRICE_MONTHLY_ORIGINAL ? Number(process.env.MERCADOPAGO_PRICE_MONTHLY_ORIGINAL) : 21960,

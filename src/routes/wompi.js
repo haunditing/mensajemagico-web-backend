@@ -32,13 +32,31 @@ router.post("/checkout", async (req, res) => {
     const user = await User.findById(userId);
     if (!user) return res.status(404).json({ error: "Usuario no encontrado" });
 
-    // Definir precio según el plan y el intervalo seleccionado
-    const premiumConfig = PLAN_CONFIG.subscription_plans.premium;
-    const isYearly = planId === "premium_yearly";
-
-    if (!isYearly && planId !== "premium_monthly") {
+    // Mapear planId a configuración correcta
+    // Soportamos: premium_monthly, premium_yearly, premium_lite_monthly, premium_lite_yearly
+    let basePlan, isYearly;
+    
+    if (planId === "premium_monthly") {
+      basePlan = "premium";
+      isYearly = false;
+    } else if (planId === "premium_yearly") {
+      basePlan = "premium";
+      isYearly = true;
+    } else if (planId === "premium_lite_monthly") {
+      basePlan = "premium_lite";
+      isYearly = false;
+    } else if (planId === "premium_lite_yearly") {
+      basePlan = "premium_lite";
+      isYearly = true;
+    } else {
       logger.warn(`Plan desconocido recibido: "${planId}". Rechazando solicitud.`);
       return res.status(400).json({ error: "Plan no válido" });
+    }
+    
+    const planConfig = PLAN_CONFIG.subscription_plans[basePlan];
+    if (!planConfig) {
+      logger.error(`Configuración de plan no encontrada: ${basePlan}`);
+      return res.status(500).json({ error: "Error de configuración de plan" });
     }
 
     const mpKey = isYearly ? "mercadopago_price_yearly" : "mercadopago_price_monthly";
@@ -49,8 +67,8 @@ router.post("/checkout", async (req, res) => {
     let durationToApply = 0;
 
     // --- 1. Lógica Centralizada de Estado de Oferta ---
-    const offerEndDate = premiumConfig.pricing_hooks.offer_end_date;
-    const offerDuration = premiumConfig.pricing_hooks.offer_duration_months || 0;
+    const offerEndDate = planConfig.pricing_hooks?.offer_end_date;
+    const offerDuration = planConfig.pricing_hooks?.offer_duration_months || 0;
     let isOfferActive = true;
 
     // A. Verificar expiración por fecha global
@@ -83,17 +101,17 @@ router.post("/checkout", async (req, res) => {
     } else {
       // CASO B: Fallback a cálculo del backend
       // Si la oferta expiró y tenemos un precio original, lo usamos con prioridad absoluta
-      if (!isOfferActive && premiumConfig.pricing_hooks[mpOriginalKey]) {
-        const originalPrice = premiumConfig.pricing_hooks[mpOriginalKey];
+      if (!isOfferActive && planConfig.pricing_hooks?.[mpOriginalKey]) {
+        const originalPrice = planConfig.pricing_hooks[mpOriginalKey];
         amountInCents = Math.round(originalPrice * 100);
         logger.info(`[Wompi] Restaurando precio original (${mpOriginalKey}): ${originalPrice} COP -> ${amountInCents} centavos`);
       } else {
         // Si la oferta sigue activa O no hay precio original definido, usamos la lógica estándar
         durationToApply = offerDuration; // Aplicamos duración porque estamos en rama de oferta activa
-        if (premiumConfig.pricing_hooks[wompiKey] !== undefined && premiumConfig.pricing_hooks[wompiKey] !== null) {
-          amountInCents = premiumConfig.pricing_hooks[wompiKey];
-        } else if (premiumConfig.pricing_hooks[mpKey] !== undefined && premiumConfig.pricing_hooks[mpKey] !== null) {
-          const mpPrice = premiumConfig.pricing_hooks[mpKey];
+        if (planConfig.pricing_hooks?.[wompiKey] !== undefined && planConfig.pricing_hooks?.[wompiKey] !== null) {
+          amountInCents = planConfig.pricing_hooks[wompiKey];
+        } else if (planConfig.pricing_hooks?.[mpKey] !== undefined && planConfig.pricing_hooks?.[mpKey] !== null) {
+          const mpPrice = planConfig.pricing_hooks[mpKey];
           amountInCents = Math.round(mpPrice * 100);
         }
       }
@@ -110,8 +128,9 @@ router.post("/checkout", async (req, res) => {
     }
 
     const currency = "COP";
-    // Incluimos el planId y la duración en la referencia
-    const reference = `TX-${userId}-${planId}-${durationToApply}-${Date.now()}`; 
+    // Formato de referencia: TX-{userId}--{planId}--{duration}--{timestamp}
+    // Usamos "--" como separador para evitar conflictos con guiones en planId
+    const reference = `TX-${userId}--${planId}--${durationToApply}--${Date.now()}`; 
 
     // Generar firma de integridad
     const signature = WompiService.generateCheckoutSignature(reference, amountInCents, currency);
@@ -159,18 +178,32 @@ router.post("/webhooks/wompi", async (req, res) => {
 
     // 2. Procesar solo transacciones aprobadas
     if (eventType === "transaction.updated" && transaction.status === "APPROVED") {
-      // Extraer datos de la referencia (formato: TX-{userId}-{planId}-{duration}-{timestamp})
-      const parts = transaction.reference.split("-");
-      const userId = parts[1];
-      const planId = parts[2]; // 'premium_monthly' o 'premium_yearly'
-      const duration = parts[3] ? parseInt(parts[3]) : 0;
+      // Extraer datos de la referencia (formato: TX-{userId}--{planId}--{duration}--{timestamp})
+      const parts = transaction.reference.split("--");
+      if (parts.length < 4) {
+        logger.error("Formato de referencia inválido en Wompi webhook", { reference: transaction.reference });
+        return res.status(400).json({ error: "Referencia inválida" });
+      }
+
+      const userId = parts[0].replace("TX-", ""); // Remover el prefijo TX-
+      const planId = parts[1]; // 'premium_monthly', 'premium_yearly', 'premium_lite_monthly', o 'premium_lite_yearly'
+      const duration = parts[2] ? parseInt(parts[2]) : 0;
 
       if (userId) {
+        // Determinar el nivel del plan y el intervalo
+        let planLevel = "guest"; // default
+        let planInterval = "month"; // default
+        
+        if (planId.includes("premium")) {
+          planLevel = planId.includes("lite") ? "premium_lite" : "premium";
+          planInterval = planId.includes("yearly") ? "year" : "month";
+        }
+
         const updateData = {
-          planLevel: "premium",
+          planLevel,
           subscriptionId: `wompi_${transaction.id}`,
           lastPaymentDate: new Date(),
-          planInterval: planId === "premium_yearly" ? "year" : "month"
+          planInterval
         };
 
         // Si es una nueva adquisición con promo, guardamos la fecha fin
@@ -186,11 +219,11 @@ router.post("/webhooks/wompi", async (req, res) => {
           logger.info(`Promo Wompi aplicada para usuario ${userId}. Vence: ${promoEndsAt}`);
         }
 
-        // 3. Actualizar usuario a PRO (Premium)
+        // 3. Actualizar usuario
         const updatedUser = await User.findByIdAndUpdate(userId, updateData, { new: true });
 
         if (updatedUser) {
-          logger.info(`Usuario ${userId} actualizado a Premium vía Wompi`);
+          logger.info(`Usuario ${userId} actualizado a plan ${planLevel} vía Wompi`);
         } else {
           logger.error(`Usuario ${userId} no encontrado para actualización Wompi`);
         }

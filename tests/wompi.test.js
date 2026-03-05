@@ -12,10 +12,18 @@ jest.mock("../src/config/plans", () => ({
   subscription_plans: {
     premium: {
       pricing_hooks: {
-        wompi_price_in_cents_monthly: 1500000,
-        wompi_price_in_cents_yearly: 15000000,
-        mercadopago_price_monthly: 15000,
-        mercadopago_price_yearly: 150000,
+        wompi_price_in_cents_monthly: 15960,
+        wompi_price_in_cents_yearly: 159600,
+        mercadopago_price_monthly: 15960,
+        mercadopago_price_yearly: 159600,
+      },
+    },
+    premium_lite: {
+      pricing_hooks: {
+        wompi_price_in_cents_monthly: 12990,
+        wompi_price_in_cents_yearly: 129900,
+        mercadopago_price_monthly: 9180,
+        mercadopago_price_yearly: 91800,
       },
     },
   },
@@ -38,7 +46,7 @@ describe("Wompi Integration Tests", () => {
   });
 
   describe("POST /api/checkout", () => {
-    it("Debe generar los parámetros de checkout correctamente", async () => {
+    it("Debe generar los parámetros de checkout correctamente para premium_monthly", async () => {
       User.findById.mockResolvedValue(mockUser);
       WompiService.generateCheckoutSignature.mockReturnValue("mock_signature_hash");
       WompiService.getPublicKey.mockReturnValue("pub_test_mock");
@@ -49,8 +57,65 @@ describe("Wompi Integration Tests", () => {
 
       expect(res.status).toBe(200);
       expect(res.body).toEqual(expect.objectContaining({
-        reference: expect.stringContaining(`TX-${mockUserId}-`),
-        amountInCents: 1500000,
+        reference: expect.stringMatching(/^TX-.*--premium_monthly--/),
+        amountInCents: 15960,
+        currency: "COP",
+        signature: "mock_signature_hash",
+        publicKey: "pub_test_mock"
+      }));
+    });
+
+    it("Debe generar los parámetros de checkout correctamente para premium_lite_monthly", async () => {
+      User.findById.mockResolvedValue(mockUser);
+      WompiService.generateCheckoutSignature.mockReturnValue("mock_signature_hash");
+      WompiService.getPublicKey.mockReturnValue("pub_test_mock");
+
+      const res = await request(app)
+        .post("/api/checkout")
+        .send({ userId: mockUserId, planId: "premium_lite_monthly" });
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual(expect.objectContaining({
+        reference: expect.stringMatching(/^TX-.*--premium_lite_monthly--/),
+        amountInCents: 12990,
+        currency: "COP",
+        signature: "mock_signature_hash",
+        publicKey: "pub_test_mock"
+      }));
+    });
+
+    it("Debe generar los parámetros de checkout correctamente para premium_yearly", async () => {
+      User.findById.mockResolvedValue(mockUser);
+      WompiService.generateCheckoutSignature.mockReturnValue("mock_signature_hash");
+      WompiService.getPublicKey.mockReturnValue("pub_test_mock");
+
+      const res = await request(app)
+        .post("/api/checkout")
+        .send({ userId: mockUserId, planId: "premium_yearly" });
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual(expect.objectContaining({
+        reference: expect.stringMatching(/^TX-.*--premium_yearly--/),
+        amountInCents: 159600,
+        currency: "COP",
+        signature: "mock_signature_hash",
+        publicKey: "pub_test_mock"
+      }));
+    });
+
+    it("Debe generar los parámetros de checkout correctamente para premium_lite_yearly", async () => {
+      User.findById.mockResolvedValue(mockUser);
+      WompiService.generateCheckoutSignature.mockReturnValue("mock_signature_hash");
+      WompiService.getPublicKey.mockReturnValue("pub_test_mock");
+
+      const res = await request(app)
+        .post("/api/checkout")
+        .send({ userId: mockUserId, planId: "premium_lite_yearly" });
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual(expect.objectContaining({
+        reference: expect.stringMatching(/^TX-.*--premium_lite_yearly--/),
+        amountInCents: 129900,
         currency: "COP",
         signature: "mock_signature_hash",
         publicKey: "pub_test_mock"
@@ -116,14 +181,28 @@ describe("Wompi Integration Tests", () => {
   });
 
   describe("POST /api/webhooks/wompi", () => {
-    const mockEvent = {
+    const mockPremiumEvent = {
       event: "transaction.updated",
       data: {
         transaction: {
           id: "tr_wompi_123",
           status: "APPROVED",
-          reference: `TX-${mockUserId}-123456789`,
-          amount_in_cents: 1500000
+          reference: `TX-${mockUserId}--premium_monthly--0--${Date.now()}`,
+          amount_in_cents: 15960
+        }
+      },
+      signature: { checksum: "valid_checksum" },
+      timestamp: 1678900000
+    };
+
+    const mockPremiumLiteEvent = {
+      event: "transaction.updated",
+      data: {
+        transaction: {
+          id: "tr_wompi_456",
+          status: "APPROVED",
+          reference: `TX-${mockUserId}--premium_lite_monthly--0--${Date.now()}`,
+          amount_in_cents: 12990
         }
       },
       signature: { checksum: "valid_checksum" },
@@ -136,19 +215,43 @@ describe("Wompi Integration Tests", () => {
 
       const res = await request(app)
         .post("/api/webhooks/wompi")
-        .send(mockEvent);
+        .send(mockPremiumEvent);
 
       expect(res.status).toBe(200);
       expect(res.body).toEqual({ received: true });
       
-      // Verificar que se actualizó el usuario
+      // Verificar que se actualizó el usuario con planLevel correcto
       expect(User.findByIdAndUpdate).toHaveBeenCalledWith(
         mockUserId,
         expect.objectContaining({
           planLevel: "premium",
-          subscriptionId: "wompi_tr_wompi_123"
+          subscriptionId: "wompi_tr_wompi_123",
+          planInterval: "month"
         }),
-        expect.any(Object) // opciones de mongoose { new: true }
+        expect.any(Object)
+      );
+    });
+
+    it("Debe activar el plan Premium Lite cuando la transacción es APROBADA", async () => {
+      WompiService.verifyWebhookSignature.mockReturnValue(true);
+      User.findByIdAndUpdate.mockResolvedValue({ ...mockUser, planLevel: "premium_lite" });
+
+      const res = await request(app)
+        .post("/api/webhooks/wompi")
+        .send(mockPremiumLiteEvent);
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ received: true });
+      
+      // Verificar que se actualizó el usuario con planLevel premium_lite
+      expect(User.findByIdAndUpdate).toHaveBeenCalledWith(
+        mockUserId,
+        expect.objectContaining({
+          planLevel: "premium_lite",
+          subscriptionId: "wompi_tr_wompi_456",
+          planInterval: "month"
+        }),
+        expect.any(Object)
       );
     });
 
@@ -157,7 +260,7 @@ describe("Wompi Integration Tests", () => {
 
       const res = await request(app)
         .post("/api/webhooks/wompi")
-        .send(mockEvent);
+        .send(mockPremiumEvent);
 
       expect(res.status).toBe(400);
       expect(res.body.error).toBe("Firma inválida");
