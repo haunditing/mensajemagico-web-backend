@@ -120,7 +120,12 @@ router.post("/checkout", async (req, res) => {
     // Asegurar que sea entero para evitar errores de firma con decimales
     amountInCents = Math.round(Number(amountInCents));
 
-    logger.info(`Precio resuelto para Wompi: ${amountInCents} (Plan: ${planId})`);
+    // Wompi ahora espera el valor multiplicado por 100 (dos ceros adicionales)
+    // para mostrar el precio real en el widget. Esto coincide con el mensaje
+    // interno "+00" que usamos en los registros.
+    logger.info(`Precio resuelto para Wompi antes de ajustar: ${amountInCents} (Plan: ${planId})`);
+    amountInCents *= 100;
+    logger.info(`Precio enviado a Wompi (con +00): ${amountInCents}`);
 
     if (!amountInCents) {
       logger.error("Precio Wompi no configurado en plans.js", { planId });

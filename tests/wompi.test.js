@@ -58,7 +58,8 @@ describe("Wompi Integration Tests", () => {
       expect(res.status).toBe(200);
       expect(res.body).toEqual(expect.objectContaining({
         reference: expect.stringMatching(/^TX-.*--premium_monthly--/),
-        amountInCents: 15960,
+        // el backend añade dos ceros extras antes de responder
+        amountInCents: 15960 * 100,
         currency: "COP",
         signature: "mock_signature_hash",
         publicKey: "pub_test_mock"
@@ -77,7 +78,7 @@ describe("Wompi Integration Tests", () => {
       expect(res.status).toBe(200);
       expect(res.body).toEqual(expect.objectContaining({
         reference: expect.stringMatching(/^TX-.*--premium_lite_monthly--/),
-        amountInCents: 12990,
+        amountInCents: 12990 * 100,
         currency: "COP",
         signature: "mock_signature_hash",
         publicKey: "pub_test_mock"
@@ -96,7 +97,7 @@ describe("Wompi Integration Tests", () => {
       expect(res.status).toBe(200);
       expect(res.body).toEqual(expect.objectContaining({
         reference: expect.stringMatching(/^TX-.*--premium_yearly--/),
-        amountInCents: 159600,
+        amountInCents: 159600 * 100,
         currency: "COP",
         signature: "mock_signature_hash",
         publicKey: "pub_test_mock"
@@ -115,7 +116,7 @@ describe("Wompi Integration Tests", () => {
       expect(res.status).toBe(200);
       expect(res.body).toEqual(expect.objectContaining({
         reference: expect.stringMatching(/^TX-.*--premium_lite_yearly--/),
-        amountInCents: 129900,
+        amountInCents: 129900 * 100,
         currency: "COP",
         signature: "mock_signature_hash",
         publicKey: "pub_test_mock"
