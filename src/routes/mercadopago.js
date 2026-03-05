@@ -40,7 +40,7 @@ const getTRM = async () => {
  * @desc Inicia el flujo de suscripción generando el link de pago
  */
 router.post("/create_preference", async (req, res) => {
-  const { userId, planId, country, deviceId } = req.body;
+  const { userId, planId, country, deviceId, amount } = req.body;
 
   // Determinar la URL base para el retorno (back_url)
   let clientUrl = process.env.CLIENT_URL || "https://www.mensajemagico.com";
@@ -107,7 +107,17 @@ router.post("/create_preference", async (req, res) => {
       durationToApply = offerDuration;
     }
 
-    if (country === "CO") {
+    // CASO A: Usar precio del frontend (Prioridad)
+    if (amount && !isNaN(amount) && amount > 0) {
+      price = Number(amount);
+      const intervalLabel = interval === "yearly" ? "Anual" : "Mensual";
+      title = `Suscripción ${intervalLabel} - MensajeMágico ${planConfig.name}`;
+      
+      if (planId === `${planType}_yearly` || interval === "yearly") {
+        frequency = 12;
+      }
+      logger.info(`[MercadoPago] Usando precio del frontend: ${price}`);
+    } else if (country === "CO") {
       // --- CONCEPTO A: USUARIO LOCAL ---
       if (planId === `${planType}_yearly` || interval === "yearly") {
         if (!isOfferActive && planConfig.pricing_hooks.mercadopago_price_yearly_original) {
