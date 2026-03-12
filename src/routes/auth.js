@@ -112,7 +112,7 @@ router.post("/signup", authLimiter, async (req, res) => {
     if (!process.env.JWT_SECRET) {
       throw new Error("JWT_SECRET no definido en variables de entorno");
     }
-    const token = jwt.sign({ userId: newUser._id }, process.env.JWT_SECRET, {
+    const token = jwt.sign({ userId: newUser._id, role: newUser.role }, process.env.JWT_SECRET, {
       expiresIn: "7d",
     });
 
@@ -181,7 +181,7 @@ router.post("/login", authLimiter, async (req, res) => {
     if (!process.env.JWT_SECRET) {
       throw new Error("JWT_SECRET no definido en variables de entorno");
     }
-    const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, {
+    const token = jwt.sign({ userId: user._id, role: user.role }, process.env.JWT_SECRET, {
       expiresIn: "7d",
     });
 

@@ -530,4 +530,11 @@ const generateImage = async (aiConfig, { prompt }) => {
   }
 };
 
-module.exports = { generate, generateStream, generateImage };
+// Generador de campañas comerciales para admin
+async function generateCampaign(campaign) {
+  // Aquí puedes personalizar el prompt o lógica IA para campañas
+  // Por ahora, solo simula la respuesta
+  return `Campaña generada para: ${campaign}\n[Texto generado por IA aquí]`;
+}
+
+module.exports = { generate, generateStream, generateImage, generateCampaign };

@@ -17,6 +17,7 @@ const contactsRoutes = require("./src/routes/contacts");
 const guardianRoutes = require("./src/routes/guardian");
 const logsRoutes = require("./src/routes/logs");
 const adminRoutes = require("./src/routes/admin");
+const adminCampaignRouter = require('./src/routes/adminCampaign');
 
 const logger = require("./src/utils/logger");
 const errorHandler = require("./src/middleware/errorHandler");
@@ -111,6 +112,7 @@ app.use("/api/contacts", contactsRoutes);
 app.use("/api/guardian", guardianRoutes);
 app.use("/api/logs", logsRoutes);
 app.use("/api/admin", adminRoutes);
+app.use('/api/admin', adminCampaignRouter);
 
 // Servir archivos estáticos (imágenes de perfil)
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
