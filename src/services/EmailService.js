@@ -242,9 +242,54 @@ const sendTrialExpiringEmail = async (to, userName, daysLeft, trialEndDate) => {
   }
 };
 
+const sendQuotaAlertEmail = async (to, data) => {
+  const {
+    level,
+    aiRequestsToday,
+    activeUsersToday,
+    maxDailyAiRequests,
+    maxDailyActiveUsers,
+    date,
+  } = data;
+
+  const isCritical = level === "critical";
+  const severityLabel = isCritical ? "CRITICA" : "PREVENTIVA";
+  const subject = `Alerta ${severityLabel} de cuota - MensajeMagico`;
+
+  const mailOptions = {
+    from: `"Monitoreo MensajeMagico" <${process.env.EMAIL_USER}>`,
+    to,
+    subject,
+    html: `
+      <div style="font-family: sans-serif; max-width: 620px; margin: 0 auto; border: 1px solid #eee; border-radius: 10px; overflow: hidden;">
+        <div style="padding: 16px 20px; background: ${isCritical ? "#FEE2E2" : "#FEF3C7"}; color: ${isCritical ? "#991B1B" : "#92400E"};">
+          <strong>Alerta ${severityLabel} de capacidad</strong>
+        </div>
+        <div style="padding: 18px 20px; color: #1f2937;">
+          <p style="margin-top: 0;">Se alcanzo un umbral de uso en el sistema durante el proceso de registro.</p>
+          <ul style="line-height: 1.8; padding-left: 18px; margin: 10px 0;">
+            <li>Fecha (UTC): <strong>${date}</strong></li>
+            <li>Requests IA hoy: <strong>${aiRequestsToday}</strong> / ${maxDailyAiRequests}</li>
+            <li>Usuarios activos hoy: <strong>${activeUsersToday}</strong> / ${maxDailyActiveUsers}</li>
+          </ul>
+          <p style="margin-bottom: 0;">Recomendacion: revisar cuotas del proveedor IA y ampliar capacidad si el patron se mantiene.</p>
+        </div>
+      </div>
+    `,
+  };
+
+  try {
+    await transporter.sendMail(mailOptions);
+    logger.info(`Email de alerta de cuota enviado a ${to}`);
+  } catch (error) {
+    logger.error("Error enviando email de alerta de cuota", { error });
+  }
+};
+
 module.exports = { 
   sendPasswordResetEmail, 
   sendSubscriptionExpirationWarning,
   sendTrialWelcomeEmail,
-  sendTrialExpiringEmail
+  sendTrialExpiringEmail,
+  sendQuotaAlertEmail,
 };

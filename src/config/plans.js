@@ -10,7 +10,7 @@ const PLAN_CONFIG = {
         watermark: true,
       },
       access: {
-        daily_limit: 3,
+        daily_limit: 1,
         occasions: [
           "pensamiento",
           "responder",
@@ -122,7 +122,7 @@ const PLAN_CONFIG = {
         watermark: false,
       },
       access: {
-        daily_limit: 9999,
+        daily_limit: 70,
         occasions: ["all"],
         exclusive_tones: ["all"],
         context_words_limit: 50,

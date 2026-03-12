@@ -11,6 +11,7 @@ const PlanService = require("../services/PlanService");
 const logger = require("../utils/logger");
 const rateLimiter = require("../middleware/rateLimiter");
 const EmailService = require("../services/EmailService");
+const QuotaGuardService = require("../services/QuotaGuardService");
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
@@ -76,6 +77,20 @@ router.post("/signup", authLimiter, async (req, res) => {
       return res.status(400).json({ error: "El usuario ya existe" });
     }
 
+    const quotaStatus = await QuotaGuardService.evaluateSignupAvailability();
+    if (!quotaStatus.allowSignup) {
+      logger.warn("Signup bloqueado por capacidad", {
+        email,
+        status: quotaStatus.status,
+        metrics: quotaStatus.metrics,
+      });
+
+      return res.status(429).json({
+        error: "Alta demanda temporal. Estamos ampliando capacidad. Intenta de nuevo en unas horas.",
+        code: "CAPACITY_LIMIT_REACHED",
+      });
+    }
+
     // Hashear password
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
@@ -123,6 +138,9 @@ router.post("/signup", authLimiter, async (req, res) => {
       userId: newUser._id,
       planLevel: newUser.planLevel,
       name: newUser.name,
+      capacityNotice: quotaStatus.status === "warning"
+        ? "Estamos cerca del limite operativo diario. Si notas lentitud, intenta de nuevo en unos minutos."
+        : null,
       trial: trialActivated ? {
         active: true,
         daysRemaining: 7,
